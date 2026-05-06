@@ -3,7 +3,7 @@
 
 [build]
   # HTML-bestand staat in de public-map
-  publish = "public"
+  publish = "."
   # Functions staan in netlify/functions
   functions = "netlify/functions"
 
