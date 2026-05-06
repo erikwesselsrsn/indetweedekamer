@@ -1,21 +1,19 @@
-# netlify.toml
-# Configuratie voor het Kamerlid-spel op Netlify
-
 [build]
-  # HTML-bestand staat in de root
   publish = "."
-  # Functions staan in netlify/functions
   functions = "netlify/functions"
 
-# Optioneel: rate limiting via Netlify headers
-# Voorkomt dat iemand razendsnel veel API-calls doet
+[functions]
+  node_bundler = "esbuild"
+
+[functions."claude"]
+  timeout = 26
+
 [[headers]]
   for = "/.netlify/functions/claude"
   [headers.values]
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
 
-# Alle verzoeken naar de HTML sturen (voor PWA later)
 [[redirects]]
   from = "/*"
   to = "/index.html"
