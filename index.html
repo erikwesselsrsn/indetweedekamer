@@ -3744,17 +3744,18 @@ Toon: journalistiek, nuchter, educatief voor middelbare scholieren. Geen oordeel
 
 
 // ==================== SUPABASE AUTH ====================
-// Supabase anon key is publiek bedoeld (read-only, geen admin rechten)
-const SUPABASE_URL = 'https://etrbfxfnjaliezlbkzrw.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0cmJmeGZuamFsaWV6bGJrenJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NTIsImV4cCI6MjA5Mzk3ODg1Mn0.AGgtVniKmo-XWvRGmGp6pXVpL00fYxHkco8oIDLs3RY';
+// Supabase config wordt geladen via de auth proxy
+const SUPABASE_URL = '';
+const SUPABASE_ANON = '';
 
 let currentUser = null;
 
 async function supabaseFetch(path, options = {}) {
-  const res = await fetch(SUPABASE_URL + path, {
+  // Auth calls gaan via Netlify proxy — keys staan alleen op de server
+  const url = '/.netlify/functions/auth?path=' + encodeURIComponent(path);
+  const res = await fetch(url, {
     ...options,
     headers: {
-      'apikey': SUPABASE_ANON,
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     }
