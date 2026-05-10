@@ -3831,13 +3831,44 @@ async function doLogout() {
 }
 
 async function checkBestaandeLogin() {
+  // Stap 1: token in URL-hash (na klik op uitnodigingsmail)
+  const hash = window.location.hash;
+  if (hash && hash.includes('access_token')) {
+    const params = new URLSearchParams(hash.substring(1));
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const inviteType = params.get('type');
+    if (accessToken) {
+      try {
+        const res = await supabaseFetch('/auth/v1/user', {
+          headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+        if (res.ok) {
+          const user = await res.json();
+          const email = user.email || '';
+          localStorage.setItem('sb_access_token', accessToken);
+          if (refreshToken) localStorage.setItem('sb_refresh_token', refreshToken);
+          localStorage.setItem('sb_user_email', email);
+          window.history.replaceState(null, '', window.location.pathname);
+          currentUser = user;
+          if (inviteType === 'invite' || inviteType === 'recovery') {
+            showScreen('login-screen');
+            const errEl = document.getElementById('login-error');
+            if (errEl) { errEl.style.color = 'var(--teal)'; errEl.textContent = '✓ Welkom ' + email + ' — je bent automatisch ingelogd. Klik op Inloggen.'; }
+            const emailEl = document.getElementById('login-email');
+            if (emailEl) emailEl.value = email;
+            return;
+          }
+          onLoginSuccess(email);
+          return;
+        }
+      } catch(e) { /* val door */ }
+    }
+  }
+  // Stap 2: opgeslagen token controleren
   const token = localStorage.getItem('sb_access_token');
   const email = localStorage.getItem('sb_user_email');
-  if (!token || !email) {
-    showScreen('login-screen');
-    return;
-  }
-  // Verifieer token bij Supabase
+  if (!token || !email) { showScreen('login-screen'); return; }
   try {
     const res = await supabaseFetch('/auth/v1/user', {
       headers: { 'Authorization': 'Bearer ' + token }
@@ -3846,15 +3877,12 @@ async function checkBestaandeLogin() {
       currentUser = await res.json();
       onLoginSuccess(email);
     } else {
-      // Token verlopen of ongeldig
       localStorage.removeItem('sb_access_token');
       localStorage.removeItem('sb_refresh_token');
       localStorage.removeItem('sb_user_email');
       showScreen('login-screen');
     }
-  } catch(e) {
-    showScreen('login-screen');
-  }
+  } catch(e) { showScreen('login-screen'); }
 }
 
 // ==================== INIT ====================
