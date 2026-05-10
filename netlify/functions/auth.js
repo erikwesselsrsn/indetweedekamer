@@ -1,6 +1,5 @@
 // netlify/functions/auth.js
-// Proxy voor alle Supabase auth-calls.
-// Credentials staan alleen op de server via environment variables.
+// Proxy voor Supabase auth. Keys staan ALLEEN hier via environment variables.
 
 const https = require("https");
 
@@ -13,28 +12,22 @@ exports.handler = async function (event) {
     "Content-Type": "application/json",
   };
 
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 200, headers, body: "" };
-  }
+  if (event.httpMethod === "OPTIONS") return { statusCode: 200, headers, body: "" };
 
-  const anonKey = process.env.SUPABASE_ANON_KEY || "";
+  const anonKey = process.env.SUPABASE_ANON_KEY;
   if (!anonKey) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: "Supabase niet geconfigureerd." }) };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: "Auth niet geconfigureerd op de server." }) };
   }
 
-  // Supabase pad uit query parameter
   const supabasePath = (event.queryStringParameters && event.queryStringParameters.path)
     ? event.queryStringParameters.path
     : "/auth/v1/user";
 
-  // Methode: gebruik wat de browser stuurde
-  const method = event.httpMethod === "OPTIONS" ? "GET" : event.httpMethod;
-
-  // Headers doorzetten
   const forwardHeaders = {
     "apikey": anonKey,
     "Content-Type": "application/json",
   };
+
   const authHeader = event.headers["authorization"] || event.headers["Authorization"] || "";
   if (authHeader) forwardHeaders["Authorization"] = authHeader;
 
@@ -42,23 +35,18 @@ exports.handler = async function (event) {
   if (postData) forwardHeaders["Content-Length"] = Buffer.byteLength(postData).toString();
 
   return new Promise((resolve) => {
-    const options = {
+    const req = https.request({
       hostname: SUPABASE_HOST,
       path: supabasePath,
-      method: method,
+      method: event.httpMethod,
       headers: forwardHeaders,
-    };
-
-    const req = https.request(options, (res) => {
+    }, (res) => {
       let data = "";
       res.on("data", (chunk) => { data += chunk; });
       res.on("end", () => {
         resolve({
           statusCode: res.statusCode,
-          headers: {
-            ...headers,
-            "Content-Type": res.headers["content-type"] || "application/json",
-          },
+          headers: { ...headers, "Content-Type": res.headers["content-type"] || "application/json" },
           body: data,
         });
       });
@@ -70,10 +58,10 @@ exports.handler = async function (event) {
 
     req.setTimeout(8000, () => {
       req.destroy();
-      resolve({ statusCode: 504, headers, body: JSON.stringify({ error: "Timeout bij Supabase." }) });
+      resolve({ statusCode: 504, headers, body: JSON.stringify({ error: "Timeout bij authenticatie." }) });
     });
 
-    if (postData && method !== "GET") req.write(postData);
+    if (postData && event.httpMethod !== "GET") req.write(postData);
     req.end();
   });
 };
