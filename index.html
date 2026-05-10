@@ -3776,10 +3776,6 @@ async function doLogin() {
   const errEl = document.getElementById('login-error');
   const btn = document.getElementById('btn-login');
 
-  console.log('doLogin gestart, email:', email);
-  errEl.style.color = 'var(--yellow)';
-  errEl.textContent = 'Bezig met inloggen...';
-
   if (!email || !password) {
     errEl.style.color = 'var(--red)';
     errEl.textContent = 'Vul je e-mailadres en wachtwoord in.';
@@ -3788,35 +3784,29 @@ async function doLogin() {
 
   btn.disabled = true;
   btn.textContent = 'Bezig...';
+  errEl.style.color = 'var(--dim)';
+  errEl.textContent = 'Inloggen...';
 
   try {
     const url = '/.netlify/functions/auth?path=' + encodeURIComponent('/auth/v1/token?grant_type=password');
-    console.log('Fetch naar:', url);
-    errEl.textContent = 'Verbinding maken met server...';
-
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
 
-    console.log('Response status:', res.status);
-    errEl.textContent = 'Antwoord ontvangen: ' + res.status;
-
     const text = await res.text();
-    console.log('Response tekst:', text.slice(0, 200));
-
     let data;
     try { data = JSON.parse(text); } catch(e) {
-      throw new Error('Server stuurde geen geldig antwoord: ' + text.slice(0, 100));
+      throw new Error('Serverfout — probeer opnieuw.');
     }
 
     if (!res.ok) {
-      throw new Error(data.error_description || data.error || data.message || 'Fout ' + res.status);
+      throw new Error(data.error_description || data.error || data.message || 'Inloggen mislukt.');
     }
 
     if (!data.access_token) {
-      throw new Error('Geen toegangstoken ontvangen. Response: ' + JSON.stringify(data).slice(0, 100));
+      throw new Error('Geen toegangstoken ontvangen.');
     }
 
     currentUser = data.user;
@@ -3824,13 +3814,11 @@ async function doLogin() {
     localStorage.setItem('sb_refresh_token', data.refresh_token || '');
     localStorage.setItem('sb_user_email', email);
 
-    console.log('Inloggen gelukt!');
     errEl.style.color = 'var(--teal)';
     errEl.textContent = '✓ Ingelogd!';
     onLoginSuccess(email);
 
   } catch(e) {
-    console.error('Login fout:', e.message);
     errEl.style.color = 'var(--red)';
     errEl.textContent = '✗ ' + e.message;
   } finally {
