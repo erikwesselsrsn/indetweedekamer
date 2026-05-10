@@ -8,6 +8,14 @@
 [functions."claude"]
   timeout = 26
 
+[functions."auth"]
+  timeout = 10
+
+# Supabase anon key is publiek bedoeld (by design, geen admin rechten)
+# Alleen ANTHROPIC_API_KEY is echt gevoelig en staat in environment variables
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "SUPABASE_ANON"
+
 [[headers]]
   for = "/.netlify/functions/claude"
   [headers.values]
