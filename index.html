@@ -3744,16 +3744,19 @@ Toon: journalistiek, nuchter, educatief voor middelbare scholieren. Geen oordeel
 
 
 // ==================== SUPABASE AUTH ====================
-const SUPABASE_URL = 'https://etrbfxfnjaliezlbkzrw.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0cmJmeGZuamFsaWV6bGJrenJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NTIsImV4cCI6MjA5Mzk3ODg1Mn0.AGgtVniKmo-XWvRGmGp6pXVpL00fYxHkco8oIDLs3RY';
+// Supabase credentials worden NIET in de browser opgeslagen.
+// Auth verloopt via de Netlify proxy (/.netlify/functions/auth)
 
 let currentUser = null;
 
 async function supabaseFetch(path, options = {}) {
-  const res = await fetch(SUPABASE_URL + path, {
+  // Auth calls gaan via Netlify proxy zodat credentials niet in browser staan
+  const isNetlify = window.location.hostname !== 'localhost' && !window.location.protocol.startsWith('file');
+  const base = isNetlify ? '/.netlify/functions/auth' : '/.netlify/functions/auth';
+  const url = isNetlify ? base + '?path=' + encodeURIComponent(path) : base + path;
+  const res = await fetch(url, {
     ...options,
     headers: {
-      'apikey': SUPABASE_ANON,
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     }
