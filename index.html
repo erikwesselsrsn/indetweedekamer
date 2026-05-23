@@ -882,7 +882,7 @@
     margin: 16px 0;
   }
 
-  .end-verdict.herkozen { color: var(--green); text-shadow: 0 0 20px rgba(58,223,106,0.5); }
+  .end-verdict-unused { color: var(--green); text-shadow: 0 0 20px rgba(58,223,106,0.5); }
   .end-verdict.verloren { color: var(--red); text-shadow: 0 0 20px rgba(232,74,74,0.5); }
 
   .stats-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
@@ -2117,8 +2117,8 @@ Geef ALLEEN dit JSON-object:
   ]
 }
 
-INDIENERS: gebruik UITSLUITEND namen van HUIDIGE zittende Kamerleden. NOOIT: ministers, oud-Kamerleden. Gebruik ALLEEN (volledige namen): D66(Paternotte/Sneller/Paulusma/Podt/Rooderkerk/Klos), VVD(Brekelmans/Becker/Ellian/De Groot/Michon-Derkzen), GL-PvdA(Klaver/Kuiken/Kathmann/De Hoop/Kröger/Bromet/Bushoff), CDA(Bontenbal/Steen/Van Dijk/Krul/Jumelet/Lohman), PVV(Wilders/Bosma/Maeijer/Mulder/Kops/Jansen), JA21(Eerdmans/Coenradie/Goudzwaard), FVD(De Vos/Van Meijeren/Van Houwelingen), Markuszower(Markuszower/Heutink/Schilder), BBB(Van der Plas/Vermeer/Wiersma), SP(Dijk/Beckerman/Dobbe), CU(Bikker/Ceder/Grinwis), PvdD(Kostić/Ouwehand/Teunissen), SGP(Stoffer/Flach), DENK(Van Baarle/El Abassi/Ergin), 50PLUS(Struijs/Van Brenk), Volt(Dassen), Keijzer(Keijzer)`
-    }], 'Je bent een spelmotor voor een Nederlandse parlementaire simulatie. COALITIE-PARTIJEN (D66, VVD, CDA): kabinet steunen geeft loyaliteit, tegenwerken kost loyaliteit. OPPOSITIE-PARTIJEN (alle anderen): kabinet bekritiseren versterkt partijprofiel en loyaliteit, steunen kost loyaliteit. Pas stat_changes aan op coalitie/oppositie-status. Antwoord ALLEEN met geldig JSON. Geen tekst ervoor of erna.');
+INDIENERS: gebruik ALLEEN zittende Kamerleden: D66(Paternotte/Sneller/Paulusma/Podt/Klos/Rooderkerk), VVD(Brekelmans/Becker/Ellian/De Groot/Michon-Derkzen/Bikkers), GL-PvdA(Klaver/Kathmann/De Hoop/Kröger/Bromet/Bushoff/Moorman/Lahlah), CDA(Bontenbal/Steen/Krul/Lohman/Jumelet/Van den Brink), PVV(Wilders/Bosma/Maeijer/Mulder/Kops/De Roon/Jansen), JA21(Eerdmans/Coenradie/Goudzwaard), FVD(De Vos/Van Meijeren/Van Houwelingen), Markuszower(Markuszower/Heutink/Schilder), BBB(Van der Plas/Vermeer/Wiersma), SP(Dijk/Beckerman/Dobbe), CU(Bikker/Ceder/Grinwis), PvdD(Kostić/Ouwehand/Teunissen), SGP(Stoffer/Flach), DENK(Van Baarle/El Abassi/Ergin), 50PLUS(Struijs/Van Brenk), Volt(Dassen), Keijzer(Keijzer)`
+    }], 'Antwoord ALLEEN met geldig JSON. Geen tekst ervoor of erna.', 700);
 
     let mc = motiesResult.replace(/\`\`\`json/gi,'').replace(/\`\`\`/g,'').trim();
     const mjm = mc.match(/\{[\s\S]*\}/); if (mjm) mc = mjm[0];
@@ -2128,10 +2128,10 @@ INDIENERS: gebruik UITSLUITEND namen van HUIDIGE zittende Kamerleden. NOOIT: min
       motiesData.moties.forEach(m => {
         state.moties.push({
           title: m.titel || 'Motie',
-          indiener: m.indiener || '—',
+          indiener: m.indiener || '\u2014',
           overwegende: m.overwegende || '',
           verzoekt: m.verzoekt || '',
-          kabinet_advies: m.kabinet_advies || '—',
+          kabinet_advies: m.kabinet_advies || '\u2014',
           thema: m.thema || state.theme,
           week: state.week,
         });
@@ -2141,9 +2141,9 @@ INDIENERS: gebruik UITSLUITEND namen van HUIDIGE zittende Kamerleden. NOOIT: min
     }
   } catch(e) {
     console.log('Moties laden mislukt:', e.message);
-    // Geen fatal error - speler kan nog steeds dilemma en agenda spelen
   }
 }
+
 
 function handleAgendaKlik(type) {
   if (!type) return;
@@ -2397,7 +2397,7 @@ function renderMoties() {
 
 // ==================== API ====================
 
-async function callClaude(messages, systemPrompt) {
+async function callClaude(messages, systemPrompt, maxTokens) {
   const isNetlify = window.location.hostname !== 'localhost' && !window.location.protocol.startsWith('file');
   const endpoint = isNetlify ? '/.netlify/functions/claude' : 'https://api.anthropic.com/v1/messages';
   const token = localStorage.getItem('sb_access_token') || '';
@@ -2413,13 +2413,21 @@ async function callClaude(messages, systemPrompt) {
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5',
-      max_tokens: 2000,
+      max_tokens: maxTokens || 800,
       system: systemPrompt,
       messages,
     })
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
+    // Bij 401: sessie verlopen → uitloggen
+    if (response.status === 401) {
+      localStorage.removeItem('sb_access_token');
+      localStorage.removeItem('sb_refresh_token');
+      localStorage.removeItem('sb_user_email');
+      showScreen('login-screen');
+      throw new Error('Sessie verlopen. Log opnieuw in.');
+    }
     throw new Error(err.error?.message || 'API-fout: ' + response.status);
   }
   const data = await response.json();
@@ -2771,7 +2779,7 @@ async function startGame() {
       een positieve maar journalistieke toon. Schrijf alsof het 12 november 2025 is, de dag van de installatie 
       van de nieuwe Tweede Kamer na de verkiezingen van 29 oktober 2025 waarbij D66 en PVV beide 26 zetels kregen.`
     }],
-    'Je bent een Nederlandse politiek journalist. Schrijf alleen het artikel, geen uitleg of meta-tekst. Geen markdown.');
+    'Je bent een Nederlandse politiek journalist. Schrijf alleen het artikel, geen uitleg of meta-tekst. Geen markdown.', 500);
 
     document.getElementById('intro-body').innerHTML = article.replace(/\n/g, '<br>');
     document.getElementById('btn-intro-continue').disabled = false;
@@ -2862,7 +2870,7 @@ Geef ALLEEN dit JSON-object, niets anders:
   "keuze_c": { "tekst": "Optie C (1-2 zinnen)", "effecten": "bijv. +Integriteit" },
   "nieuws_item": "Nieuwsflits max 8 woorden"
 }`
-    }], 'Je bent spelmotor voor Nederlandse parlementaire simulatie. COALITIE (D66/VVD/CDA): kabinet steunen geeft loyaliteit. OPPOSITIE (alle andere partijen): kabinet bekritiseren geeft loyaliteit. Antwoord ALLEEN met geldig JSON.');
+    }], 'Je bent spelmotor voor Nederlandse parlementaire simulatie. COALITIE (D66/VVD/CDA): kabinet steunen geeft loyaliteit. OPPOSITIE (alle andere partijen): kabinet bekritiseren geeft loyaliteit. Antwoord ALLEEN met geldig JSON.', 500);
 
     let dilemma;
     try {
@@ -2974,7 +2982,7 @@ De stat_changes moeten logisch zijn bij de gemaakte keuze. Gebruik waarden tusse
 fractie_change is een getal tussen -15 en +15.
 uitleg is een educatieve toelichting van max 2 zinnen voor middelbare scholieren.`
     }],
-    'Je bent een spelmotor. Antwoord uitsluitend met geldige JSON, zonder extra tekst of markdown.');
+    'Je bent een spelmotor. Antwoord uitsluitend met geldige JSON, zonder extra tekst of markdown.', 400);
 
     let res;
     try {
@@ -3102,7 +3110,7 @@ Antwoord ALLEEN als geldige JSON zonder markdown:
   "overwegende": "overwegende dat [reden]; overwegende dat [reden 2];",
   "verzoekt": "verzoekt de regering [concrete opdracht]"
 }`
-    }], 'Spelmotor. Antwoord uitsluitend met geldige JSON zonder extra tekst.');
+    }], 'Spelmotor. Antwoord uitsluitend met geldige JSON zonder extra tekst.', 350);
 
     let clean = motie.replace(/```json/gi,'').replace(/```/g,'').trim();
     const jm2 = clean.match(/\{[\s\S]*\}/);
@@ -3680,12 +3688,12 @@ async function endGame() {
     'Integriteit': integ,
     'Populariteit': pop,
     'Loyaliteit': loyaliteit
-  }).sort((a,b) => b[1]-a[1]);
+  }).sort((a,b) => b[1]-a[1], 'Antwoord ALLEEN met geldig JSON.', 350);
 
   const hoofdprofiel = sterkst[0][0];
   const zwakst = sterkst[sterkst.length-1][0];
 
-  // Verdikt: niet herkozen maar impact laten zien
+  // Verdikt: profiel-oordeel op basis van gemiddelde score
   let oordeel = '';
   const score = (pop + integ + dossier) / 3;
   if (score >= 80) oordeel = '⭐ UITSTEKEND KAMERLID';
@@ -3744,7 +3752,7 @@ Schrijf over:
 4. Een concrete les over het Kamerlidmaatschap
 
 Toon: journalistiek, nuchter, educatief voor middelbare scholieren. Geen oordeel over herverkiezing.`
-    }], 'Je bent een parlementaire journalist. Schrijf alleen het verslag, geen opmaak of bullets.');
+    }], 'Je bent een parlementaire journalist. Schrijf alleen het verslag, geen opmaak of bullets.', 600);
 
     document.getElementById('final-text').innerHTML = verslag.split('\n').join('<br>');
   } catch(e) {
