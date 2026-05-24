@@ -3817,7 +3817,21 @@ async function doLogin() {
     }
 
     if (!res.ok) {
-      throw new Error(data.error_description || data.error || data.message || 'Inloggen mislukt.');
+      // Vertaal Supabase foutmeldingen naar begrijpelijk Nederlands
+      const raw = data.error_description || data.error || data.message || '';
+      let msg = 'Inloggen mislukt.';
+      if (raw.toLowerCase().includes('invalid login') || raw.toLowerCase().includes('invalid_grant')) {
+        msg = 'E-mailadres of wachtwoord klopt niet.';
+      } else if (raw.toLowerCase().includes('email not confirmed')) {
+        msg = 'E-mailadres nog niet bevestigd. Neem contact op met je docent.';
+      } else if (raw.toLowerCase().includes('user not found')) {
+        msg = 'Geen account gevonden met dit e-mailadres.';
+      } else if (raw.toLowerCase().includes('too many requests')) {
+        msg = 'Te veel pogingen. Wacht even en probeer opnieuw.';
+      } else if (raw) {
+        msg = raw;
+      }
+      throw new Error(msg);
     }
 
     if (!data.access_token) {
