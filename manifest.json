@@ -4,8 +4,8 @@
   "description": "Parlementaire simulatie voor middelbare scholieren",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0e1a",
-  "theme_color": "#00b8b8",
+  "background_color": "#182A4D",
+  "theme_color": "#182A4D",
   "orientation": "portrait-primary",
   "icons": [
     {

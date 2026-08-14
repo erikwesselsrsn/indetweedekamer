@@ -6,30 +6,30 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Kamerlid">
-  <meta name="theme-color" content="#00b8b8">
+  <meta name="theme-color" content="#182A4D">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kamerlid — Tweede Kamer Simulatie</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
   :root {
-    --bg: #0a0e1a;
-    --panel: #0f1526;
-    --panel2: #111a30;
-    --border: #1e3a5f;
-    --border-bright: #2a5a8f;
-    --teal: #00b8b8;
-    --teal-dim: #007a7a;
+    --bg: #182A4D;
+    --panel: #1F3559;
+    --panel2: #24406B;
+    --border: #35507F;
+    --border-bright: #F4B942;
+    --teal: #F4B942;
+    --teal-dim: #B8862A;
     --yellow: #e8c84a;
     --yellow-dim: #8a7820;
     --green: #3adf6a;
     --green-dim: #1a6a30;
     --red: #e84a4a;
     --red-dim: #7a1a1a;
-    --white: #d0dce8;
-    --dim: #5a7090;
-    --header-bg: #001833;
-    --tab-active: #003366;
+    --white: #FAF6EF;
+    --dim: #A7B3CC;
+    --header-bg: #12213C;
+    --tab-active: #24406B;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -37,7 +37,7 @@
   body {
     background: var(--bg);
     color: var(--white);
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', sans-serif;
     font-size: 13px;
     min-height: 100vh;
     overflow-x: hidden;
@@ -61,7 +61,7 @@
   }
 
   .game-title {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 52px;
     color: var(--teal);
     text-align: center;
@@ -115,7 +115,7 @@
     background: var(--bg);
     border: 1px solid var(--border-bright);
     color: var(--white);
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', sans-serif;
     font-size: 12px;
     padding: 5px 8px;
     flex: 1;
@@ -131,11 +131,14 @@
 
   .party-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
     gap: 6px;
     margin-bottom: 10px;
   }
   @media (min-width: 480px) {
+    .party-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (min-width: 760px) {
     .party-grid { grid-template-columns: repeat(3, 1fr); }
   }
 
@@ -143,33 +146,64 @@
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--dim);
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', sans-serif;
     font-size: 11px;
-    padding: 8px 4px;
+    padding: 8px 10px;
     cursor: pointer;
-    text-align: center;
+    text-align: left;
     transition: all 0.1s;
     line-height: 1.3;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .party-btn:hover { border-color: var(--teal-dim); color: var(--white); }
   .party-btn.selected { border-color: var(--teal); color: var(--teal); background: rgba(0,184,184,0.08); }
 
-  .party-btn .seats {
-    display: block;
+  .party-btn .party-name {
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--white);
+  }
+  .party-btn.selected .party-name { color: var(--teal); }
+
+  .party-btn .party-desc {
     font-size: 10px;
-    color: var(--yellow-dim);
+    color: var(--dim);
+    line-height: 1.4;
+  }
+
+  .party-btn .party-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-top: 2px;
   }
 
+  .party-btn .seats {
+    font-size: 10px;
+    color: var(--yellow-dim);
+  }
+
   .party-btn.selected .seats { color: var(--yellow); }
+
+  .party-badge {
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    color: var(--dim);
+  }
+  .party-badge.coalitie { color: var(--teal); border-color: var(--teal-dim); }
 
   .btn-start {
     width: 100%;
     background: var(--teal-dim);
     border: 1px solid var(--teal);
     color: var(--teal);
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 26px;
     letter-spacing: 3px;
     padding: 10px;
@@ -215,7 +249,7 @@
   }
 
   .intro-header .paper-name {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 22px;
     color: var(--yellow);
   }
@@ -237,7 +271,7 @@
     background: var(--green-dim);
     border: 1px solid var(--green);
     color: var(--green);
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 22px;
     letter-spacing: 2px;
     padding: 8px 20px;
@@ -265,7 +299,7 @@
   }
 
   .topbar-title {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 22px;
     color: var(--teal);
     padding: 0 12px 0 4px;
@@ -465,7 +499,7 @@
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--white);
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', sans-serif;
     font-size: 12px;
     padding: 10px 12px;
     cursor: pointer;
@@ -486,7 +520,7 @@
 
   .choice-letter {
     color: var(--yellow);
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 18px;
     line-height: 1;
     flex-shrink: 0;
@@ -510,7 +544,7 @@
   }
 
   .result-headline {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 20px;
     color: var(--yellow);
     margin-bottom: 6px;
@@ -716,7 +750,7 @@
   .vote-btns { display: flex; gap: 6px; }
 
   .vote-btn {
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', sans-serif;
     font-size: 11px;
     padding: 5px 12px;
     cursor: pointer;
@@ -815,7 +849,7 @@
   .loading-overlay.active { display: flex; }
 
   .loading-spinner {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 32px;
     color: var(--teal);
     animation: blink 0.8s steps(1) infinite;
@@ -836,7 +870,7 @@
     background: var(--teal-dim);
     border: 1px solid var(--teal);
     color: var(--teal);
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 22px;
     letter-spacing: 2px;
     padding: 8px 20px;
@@ -866,7 +900,7 @@
     background: var(--header-bg);
     padding: 12px 16px;
     border-bottom: 1px solid var(--border);
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 28px;
     color: var(--yellow);
     text-align: center;
@@ -877,7 +911,7 @@
 
   .end-verdict {
     text-align: center;
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 48px;
     margin: 16px 0;
   }
@@ -913,7 +947,7 @@
     background: var(--teal-dim);
     border: 1px solid var(--teal);
     color: var(--teal);
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 26px;
     letter-spacing: 3px;
     padding: 10px;
@@ -1005,7 +1039,7 @@
   }
 
   .modal-header .modal-title {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 20px;
     color: var(--yellow);
     letter-spacing: 2px;
@@ -1015,7 +1049,7 @@
     background: none;
     border: 1px solid var(--border);
     color: var(--dim);
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', sans-serif;
     font-size: 12px;
     padding: 3px 8px;
     cursor: pointer;
@@ -1047,7 +1081,7 @@
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--white);
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', sans-serif;
     font-size: 12px;
     padding: 9px 12px;
     cursor: pointer;
@@ -1061,7 +1095,7 @@
   .modal-choice:disabled { opacity: 0.5; cursor: default; }
 
   .modal-choice .mc-letter {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 18px;
     color: var(--yellow);
     flex-shrink: 0;
@@ -1076,7 +1110,7 @@
   }
 
   .modal-result .mr-headline {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 18px;
     color: var(--yellow);
     margin-bottom: 6px;
@@ -1147,7 +1181,7 @@
   .save-slot-name { font-size: 12px; color: var(--white); }
   .save-slot-meta { font-size: 10px; color: var(--dim); margin-top: 2px; }
   .save-btn {
-    font-family: 'Share Tech Mono', monospace; font-size: 10px;
+    font-family: 'Inter', sans-serif; font-size: 10px;
     padding: 4px 8px; cursor: pointer; border: 1px solid; background: transparent;
   }
   .save-btn.opslaan { color: var(--teal); border-color: var(--teal-dim); }
@@ -1172,7 +1206,7 @@
     cursor: pointer;
     transition: border-color 0.1s;
     text-align: left;
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', sans-serif;
   }
   .werkbezoek-opt:hover:not(:disabled) { border-color: var(--teal); }
   .werkbezoek-opt:disabled { opacity: 0.5; cursor: default; }
@@ -1203,7 +1237,7 @@
     align-items: center;
   }
   .vk-header .vk-title {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 26px;
     color: var(--yellow);
     letter-spacing: 3px;
@@ -1235,10 +1269,21 @@
     font-size: 11px; color: var(--dim); line-height: 1.7;
   }
   .vk-uitleg-box strong { color: var(--white); }
+  .vk-uitleg-list {
+    list-style: none;
+    margin: 0 0 12px 0;
+    padding: 0;
+  }
+  .vk-uitleg-list li {
+    background: rgba(0,184,184,0.05); border: 1px solid var(--teal-dim);
+    padding: 8px 10px; margin-bottom: 6px;
+    font-size: 11px; color: var(--dim); line-height: 1.6;
+  }
+  .vk-uitleg-list li strong { color: var(--white); }
   .btn-naar-spel {
     width: 100%;
     background: var(--teal-dim); border: 1px solid var(--teal);
-    color: var(--teal); font-family: 'VT323', monospace;
+    color: var(--teal); font-family: 'Space Grotesk', sans-serif;
     font-size: 26px; letter-spacing: 3px; padding: 10px;
     cursor: pointer; transition: all 0.15s; margin-top: 4px;
   }
@@ -1297,7 +1342,7 @@
     text-align: center;
   }
   .login-title {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 28px;
     color: var(--yellow);
     letter-spacing: 3px;
@@ -1329,7 +1374,7 @@
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--white);
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', sans-serif;
     font-size: 13px;
     padding: 8px 10px;
     box-sizing: border-box;
@@ -1344,7 +1389,7 @@
     background: var(--teal-dim);
     border: 1px solid var(--teal);
     color: var(--teal);
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 24px;
     letter-spacing: 2px;
     padding: 8px;
@@ -1391,7 +1436,7 @@
     background: transparent;
     border: 1px solid var(--border);
     color: var(--dim);
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', sans-serif;
     font-size: 9px;
     padding: 2px 8px;
     cursor: pointer;
@@ -1406,7 +1451,7 @@
   .error-msg { color: var(--red); font-size: 11px; margin-top: 6px; }
 
   .week-header {
-    font-family: 'VT323', monospace;
+    font-family: 'Space Grotesk', sans-serif;
     font-size: 24px;
     color: var(--yellow);
     margin-bottom: 8px;
@@ -1454,6 +1499,36 @@
   </div>
 </div>
 
+<!-- WACHTWOORD INSTELLEN (na klik op uitnodigingslink) -->
+<div class="screen" id="wachtwoord-screen">
+  <div class="login-panel">
+    <div class="login-header">
+      <span class="login-title">WELKOM</span>
+      <span class="login-subtitle">PARLEMENTAIRE SIMULATIE · WACHTWOORD INSTELLEN</span>
+    </div>
+    <div class="login-body">
+      <div class="login-info" style="margin-top:0;border-top:none;padding-top:0;text-align:left">
+        Welkom <strong id="wachtwoord-email" style="color:var(--white)"></strong> — je bent uitgenodigd voor het
+        spel. Kies hieronder een wachtwoord. Daarmee kun je de rest van het schooljaar steeds opnieuw inloggen.
+      </div>
+      <div class="login-field">
+        <label>Nieuw wachtwoord</label>
+        <input type="password" id="wachtwoord-nieuw" placeholder="minimaal 6 tekens"
+               onkeydown="if(event.key==='Enter') doSetPassword()">
+      </div>
+      <div class="login-field">
+        <label>Bevestig wachtwoord</label>
+        <input type="password" id="wachtwoord-bevestig" placeholder="herhaal wachtwoord"
+               onkeydown="if(event.key==='Enter') doSetPassword()">
+      </div>
+      <button class="btn-login" id="btn-wachtwoord" onclick="doSetPassword()">
+        ▶ WACHTWOORD INSTELLEN
+      </button>
+      <div class="login-error" id="wachtwoord-error"></div>
+    </div>
+  </div>
+</div>
+
 <!-- VERKIEZINGSSCHERM -->
 <div class="screen" id="verkiezing-screen">
   <div class="vk-panel">
@@ -1464,33 +1539,28 @@
     <div class="vk-body">
       <div class="vk-intro">
         Nederland heeft gestemd. Op <strong>29 oktober 2025</strong> vonden vervroegde Tweede Kamerverkiezingen
-        plaats na de val van het kabinet. Ruim <strong>13 miljoen Nederlanders</strong> brachten hun stem uit.
-        Het resultaat bepaalt hoeveel zetels elke partij krijgt in de Tweede Kamer — en dus hoeveel invloed.
+        plaats na de val van het kabinet. Ruim <strong>13 miljoen Nederlanders</strong> brachten hun stem uit —
+        dat resultaat bepaalt hoeveel invloed elke partij krijgt.
       </div>
 
       <div class="vk-uitleg-title">📊 Hoe werkt de zetelverdeling?</div>
-      <div class="vk-uitleg-box">
-        <strong>De Tweede Kamer telt 150 zetels.</strong> Elke stem telt mee. Het totaal aantal geldige stemmen
-        wordt gedeeld door 150 — dat is de <strong>kiesdeler</strong>: het aantal stemmen dat je nodig hebt
-        voor één zetel. Een partij die twee keer de kiesdeler haalt, krijgt twee zetels. Restzetels worden
-        verdeeld via het systeem van de <strong>grootste gemiddelden</strong>. In 2025 lag de kiesdeler op
-        ongeveer <strong>97.000 stemmen</strong> per zetel.<br><br>
-        Elke burger heeft één stem, maar jouw stem kan meer of minder impact hebben afhankelijk van op welke
-        partij je stemt — grote partijen halen vaker een volle kiesdeler.
-      </div>
+      <ul class="vk-uitleg-list">
+        <li><strong>150 zetels</strong> te verdelen. Totaal aantal geldige stemmen ÷ 150 = de <strong>kiesdeler</strong>
+          — in 2025 ongeveer <strong>97.000 stemmen</strong> per zetel.</li>
+        <li>Een partij die de kiesdeler tweemaal haalt, krijgt twee zetels; driemaal, drie zetels — enzovoort.</li>
+        <li>Wat overblijft ("restzetels") gaat naar de partijen met de <strong>grootste gemiddelden</strong>.</li>
+      </ul>
 
       <div class="vk-uitleg-title">🗳 Uitslag 29 oktober 2025</div>
       <table class="vk-bar-table" id="vk-table"></table>
 
-      <div class="vk-uitleg-box" style="margin-top:10px">
-        <strong>Na de uitslag: coalitievorming en afsplitsingen.</strong> Na de verkiezingen begonnen 
-        <strong>informateur-gesprekken</strong>. Na zes weken werd <strong>kabinet-Jetten</strong> gevormd: 
-        een minderheidskabinet van <strong>D66 (26), VVD (22) en CDA (18)</strong> — samen 66 zetels.<br><br>
-        Intussen veranderde de fractieverdeling. Op <strong>20 januari 2026</strong> verlieten 7 PVV-leden 
-        de fractie en begonnen de <strong>Groep Markuszower</strong>: PVV zakte van 26 naar 19 zetels. 
-        Op <strong>23 februari 2026</strong> verliet <strong>Mona Keijzer</strong> de BBB-fractie: BBB van 4 naar 3 zetels.
-        Zo ziet de Kamer er nu anders uit dan op verkiezingsavond.
-      </div>
+      <div class="vk-uitleg-title">🤝 Na de uitslag</div>
+      <ul class="vk-uitleg-list">
+        <li><strong>Kabinet-Jetten:</strong> na zes weken informateur-gesprekken vormden D66 (26), VVD (22) en
+          CDA (18) samen een minderheidskabinet — 66 zetels.</li>
+        <li><strong>20 januari 2026:</strong> 7 PVV-leden splitsen af als Groep Markuszower — PVV zakt van 26 naar 19 zetels.</li>
+        <li><strong>23 februari 2026:</strong> Mona Keijzer verlaat de BBB-fractie — BBB van 4 naar 3 zetels.</li>
+      </ul>
 
       <button class="btn-naar-spel" onclick="naarSpel()">▶ KIES JE PARTIJ EN WORD KAMERLID</button>
     </div>
@@ -1595,13 +1665,13 @@
     <div style="display:flex;align-items:center;gap:8px;margin-left:auto;padding:0 10px">
       <button id="btn-next-week" onclick="nextWeek()" disabled style="
         background:var(--teal-dim);border:1px solid var(--teal);color:var(--teal);
-        font-family:'VT323',monospace;font-size:18px;letter-spacing:2px;
+        font-family:'Space Grotesk',sans-serif;font-size:18px;letter-spacing:2px;
         padding:3px 14px;cursor:pointer;transition:all 0.15s;opacity:0.45;
         white-space:nowrap;
       ">▶ VOLGENDE WEEK</button>
       <button onclick="openOpslaanTab();" style="
         background:transparent;border:1px solid var(--border);color:var(--dim);
-        font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;
+        font-family:'Inter',sans-serif;font-size:10px;letter-spacing:1px;
         padding:4px 10px;cursor:pointer;transition:all 0.12s;
       " onmouseover="this.style.borderColor='var(--yellow)';this.style.color='var(--yellow)'"
          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--dim)'">
@@ -1670,7 +1740,7 @@
               <span class="badge" id="dilemma-week-badge">Week 1</span>
               <button onclick="switchTab('agenda')" style="
                 background:transparent;border:1px solid var(--border);
-                color:var(--dim);font-family:'Share Tech Mono',monospace;
+                color:var(--dim);font-family:'Inter',sans-serif;
                 font-size:10px;padding:2px 8px;cursor:pointer;
               " onmouseover="this.style.color='var(--teal)';this.style.borderColor='var(--teal)'"
                  onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">
@@ -1779,7 +1849,7 @@
       <div class="end-verdict" id="end-verdict" style="font-size:32px;margin:10px 0"></div>
       <div class="final-text" id="final-text">Laden...</div>
       <div class="stats-summary" id="end-stats"></div>
-      <div class="final-text" id="end-newspaper" style="font-family:'VT323',monospace; font-size:16px; color:var(--yellow)">Laden...</div>
+      <div class="final-text" id="end-newspaper" style="font-family:'Space Grotesk',sans-serif; font-size:16px; color:var(--yellow)">Laden...</div>
       <button class="btn-restart" onclick="restartGame()">↺ OPNIEUW SPELEN</button>
     </div>
   </div>
@@ -2741,8 +2811,12 @@ function buildPartyGrid() {
   const grid = document.getElementById('party-grid');
   grid.innerHTML = PARTIES.map(p =>
     `<button class="party-btn" data-party="${p.id}" onclick="selectParty('${p.id}')">
-      ${p.name}
-      <span class="seats">${p.seats} zetels</span>
+      <span class="party-name">${escapeHtml(p.name)}</span>
+      <span class="party-desc">${escapeHtml(p.desc || '')}</span>
+      <span class="party-meta">
+        <span class="seats">${p.seats} zetels</span>
+        <span class="party-badge ${p.coalition ? 'coalitie' : 'oppositie'}">${p.coalition ? 'coalitie' : 'oppositie'}</span>
+      </span>
     </button>`
   ).join('');
 }
@@ -3865,6 +3939,88 @@ function onLoginSuccess(email) {
   toonStartSaves();
 }
 
+function showWachtwoordScreen(email) {
+  showScreen('wachtwoord-screen');
+  const emailEl = document.getElementById('wachtwoord-email');
+  if (emailEl) emailEl.textContent = email;
+  const errEl = document.getElementById('wachtwoord-error');
+  if (errEl) errEl.textContent = '';
+  const nieuwEl = document.getElementById('wachtwoord-nieuw');
+  const bevestigEl = document.getElementById('wachtwoord-bevestig');
+  if (nieuwEl) nieuwEl.value = '';
+  if (bevestigEl) bevestigEl.value = '';
+}
+
+async function doSetPassword() {
+  const nieuw = document.getElementById('wachtwoord-nieuw').value;
+  const bevestig = document.getElementById('wachtwoord-bevestig').value;
+  const email = document.getElementById('wachtwoord-email').textContent;
+  const errEl = document.getElementById('wachtwoord-error');
+  const btn = document.getElementById('btn-wachtwoord');
+  errEl.textContent = '';
+
+  if (!nieuw || nieuw.length < 6) {
+    errEl.style.color = 'var(--red)';
+    errEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn.';
+    return;
+  }
+  if (nieuw !== bevestig) {
+    errEl.style.color = 'var(--red)';
+    errEl.textContent = 'Wachtwoorden komen niet overeen.';
+    return;
+  }
+
+  const accessToken = localStorage.getItem('sb_access_token');
+  if (!accessToken) {
+    errEl.style.color = 'var(--red)';
+    errEl.textContent = 'Sessie verlopen — klik opnieuw op de uitnodigingslink.';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Bezig...';
+  errEl.style.color = 'var(--dim)';
+  errEl.textContent = 'Wachtwoord instellen...';
+
+  try {
+    const res = await supabaseFetch('/auth/v1/user', {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + accessToken },
+      body: JSON.stringify({ password: nieuw }),
+    });
+
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch(e) {
+      throw new Error('Serverfout — probeer opnieuw.');
+    }
+
+    if (!res.ok) {
+      const raw = data.error_description || data.error || data.message || data.msg || '';
+      let msg = 'Wachtwoord instellen mislukt.';
+      if (raw.toLowerCase().includes('password') && raw.toLowerCase().includes('short')) {
+        msg = 'Wachtwoord is te kort — kies minimaal 6 tekens.';
+      } else if (raw.toLowerCase().includes('same password') || raw.toLowerCase().includes('should be different')) {
+        msg = 'Kies een ander wachtwoord dan je huidige (indien van toepassing).';
+      } else if (raw) {
+        msg = raw;
+      }
+      throw new Error(msg);
+    }
+
+    errEl.style.color = 'var(--teal)';
+    errEl.textContent = '✓ Wachtwoord ingesteld!';
+    onLoginSuccess(email);
+
+  } catch(e) {
+    errEl.style.color = 'var(--red)';
+    errEl.textContent = '✗ ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ WACHTWOORD INSTELLEN';
+  }
+}
+
 async function doLogout() {
   const token = localStorage.getItem('sb_access_token');
   if (token) {
@@ -3907,11 +4063,10 @@ async function checkBestaandeLogin() {
           window.history.replaceState(null, '', window.location.pathname);
           currentUser = user;
           if (inviteType === 'invite' || inviteType === 'recovery') {
-            showScreen('login-screen');
-            const errEl = document.getElementById('login-error');
-            if (errEl) { errEl.style.color = 'var(--teal)'; errEl.textContent = '✓ Welkom ' + email + ' — je bent automatisch ingelogd. Klik op Inloggen.'; }
-            const emailEl = document.getElementById('login-email');
-            if (emailEl) emailEl.value = email;
+            // Speler is al geauthenticeerd via de uitnodigingslink, maar heeft nog geen
+            // wachtwoord ingesteld — laat dat hier doen in plaats van terug te sturen
+            // naar het gewone inlogscherm (dat een wachtwoord vraagt dat nog niet bestaat).
+            showWachtwoordScreen(email);
             return;
           }
           onLoginSuccess(email);
