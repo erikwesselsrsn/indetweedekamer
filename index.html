@@ -749,7 +749,7 @@ Geef ALLEEN dit JSON-object:
 }
 
 INDIENERS: gebruik ALLEEN zittende Kamerleden: D66(Paternotte/Sneller/Paulusma/Podt/Klos/Rooderkerk), VVD(Brekelmans/Becker/Ellian/De Groot/Michon-Derkzen/Bikkers), GL-PvdA(Klaver/Kathmann/De Hoop/Kröger/Bromet/Bushoff/Moorman/Lahlah), CDA(Bontenbal/Steen/Krul/Lohman/Jumelet/Van den Brink), PVV(Wilders/Bosma/Maeijer/Mulder/Kops/De Roon/Jansen), JA21(Eerdmans/Coenradie/Goudzwaard), FVD(De Vos/Van Meijeren/Van Houwelingen), Markuszower(Markuszower/Heutink/Schilder), BBB(Van der Plas/Vermeer/Wiersma), SP(Dijk/Beckerman/Dobbe), CU(Bikker/Ceder/Grinwis), PvdD(Kostić/Ouwehand/Teunissen), SGP(Stoffer/Flach), DENK(Van Baarle/El Abassi/Ergin), 50PLUS(Struijs/Van Brenk), Volt(Dassen), Keijzer(Keijzer)`
-  }], 'Antwoord ALLEEN met geldig JSON. Geen tekst ervoor of erna.', 700);
+  }], 'Antwoord ALLEEN met geldig JSON. Geen tekst ervoor of erna.', 700, `moties week ${week}`);
 
   let mc = motiesResult.replace(/\`\`\`json/gi,'').replace(/\`\`\`/g,'').trim();
   const mjm = mc.match(/\{[\s\S]*\}/); if (mjm) mc = mjm[0];
@@ -1038,10 +1038,15 @@ function renderMoties() {
 
 // ==================== API ====================
 
-async function callClaude(messages, systemPrompt, maxTokens) {
+async function callClaude(messages, systemPrompt, maxTokens, label) {
   const isNetlify = window.location.hostname !== 'localhost' && !window.location.protocol.startsWith('file');
   const endpoint = isNetlify ? '/.netlify/functions/claude' : 'https://api.anthropic.com/v1/messages';
   const token = localStorage.getItem('sb_access_token') || '';
+  // Lichte productie-monitoring: calltijd loggen zodat het timeoutrisico
+  // richting de 26s Netlify-limiet van de claude-functie zichtbaar is via
+  // de browserconsole, zonder een aparte metrics-dienst op te tuigen (dat
+  // is een grotere stap, bewust buiten scope — zie kamerlid-tokenschatting.md).
+  const _t0 = performance.now();
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -1059,6 +1064,8 @@ async function callClaude(messages, systemPrompt, maxTokens) {
       messages,
     })
   });
+  const _duration = Math.round(performance.now() - _t0);
+  console.log(`[AI-call${label ? ' ' + label : ''}] ${_duration}ms` + (response.ok ? '' : ` (HTTP ${response.status})`));
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     // Bij 401: sessie verlopen → uitloggen
@@ -1440,7 +1447,7 @@ async function startGame() {
       een positieve maar journalistieke toon. Schrijf alsof het 12 november 2025 is, de dag van de installatie 
       van de nieuwe Tweede Kamer na de verkiezingen van 29 oktober 2025 waarbij D66 en PVV beide 26 zetels kregen.`
     }],
-    'Je bent een Nederlandse politiek journalist. Schrijf alleen het artikel, geen uitleg of meta-tekst. Geen markdown.', 500);
+    'Je bent een Nederlandse politiek journalist. Schrijf alleen het artikel, geen uitleg of meta-tekst. Geen markdown.', 500, 'welkomstartikel');
 
     document.getElementById('intro-body').innerHTML = article.replace(/\n/g, '<br>');
     document.getElementById('btn-intro-continue').disabled = false;
@@ -1502,16 +1509,155 @@ async function applyWeekContent(parsed) {
   updateNextWeekButton();
 }
 
+// ==================== FALLBACK-DILEMMA'S ====================
+// Eén handgeschreven dilemma per beleidsthema (13), gebruikt door
+// fetchDilemmaContent() hieronder als fallback wanneer de AI-call faalt
+// (netwerkfout, API-fout of onbruikbare respons — zie scenario#2). Kost
+// geen extra tokens tijdens normaal spel: alleen gebruikt bij een
+// mislukte call, dus dit verkleint juist het risico op herhaalde calls
+// (en dus kosten) na een Netlify-timeout. Dient ook als stijlgids: 2
+// zinnen context, een dilemma met een echte trade-off (geen keuze zonder
+// stat-effect), drie keuzes, en een nieuwsflits van max 8 woorden.
+const FALLBACK_DILEMMAS = {
+  'Klimaat & Energie': {
+    dilemma_context: "Het kabinet overweegt de klimaatsubsidies voor huishoudens te verlagen om de begroting sluitend te krijgen. Milieuorganisaties en de industrie reageren verdeeld op de plannen.",
+    dilemma_vraag: "Als Kamerlid moet je een standpunt innemen over de voorgestelde bezuiniging op klimaatsubsidies, terwijl je eigen fractie verdeeld is over de te volgen koers.",
+    keuze_a: { tekst: "Steun de bezuiniging omwille van een sluitende begroting.", effecten: "+Loyaliteit, -Populariteit" },
+    keuze_b: { tekst: "Verzet je publiekelijk tegen de bezuiniging.", effecten: "+Integriteit, -Loyaliteit" },
+    keuze_c: { tekst: "Stel een compromis voor: een tijdelijke, kleinere verlaging.", effecten: "+Dossierkennis, +Media" },
+    nieuws_item: "Kamer verdeeld over klimaatsubsidies",
+  },
+  'Volkshuisvesting & Ruimtelijke Ordening': {
+    dilemma_context: "Een gemeente wil snel nieuwe woningen bouwen op een natuurgebied aan de rand van de stad. Omwonenden en natuurorganisaties protesteren tegen de plannen.",
+    dilemma_vraag: "Je wordt gevraagd in de Kamer stelling te nemen over versnelde woningbouw ten koste van groen, in een tijd van grote woningnood.",
+    keuze_a: { tekst: "Steun versnelde woningbouw, ook op het natuurgebied.", effecten: "+Populariteit, -Integriteit" },
+    keuze_b: { tekst: "Pleit voor behoud van het natuurgebied en bouw elders.", effecten: "+Integriteit, -Populariteit" },
+    keuze_c: { tekst: "Vraag om eerst grondig onderzoek naar alternatieve locaties.", effecten: "+Dossierkennis, -Media" },
+    nieuws_item: "Woningnood versus natuurbehoud in de Kamer",
+  },
+  'Volksgezondheid & Zorg': {
+    dilemma_context: "Wachtlijsten in de ggz lopen op, terwijl het kabinet extra geld wil reserveren voor de huisartsenzorg. Beide sectoren vragen om voorrang.",
+    dilemma_vraag: "Je moet kiezen hoe je pleit voor de verdeling van extra zorggeld tussen de ggz en de huisartsenzorg.",
+    keuze_a: { tekst: "Pleit voor extra geld naar de ggz-wachtlijsten.", effecten: "+Integriteit, -Loyaliteit" },
+    keuze_b: { tekst: "Steun de kabinetslijn: voorrang voor huisartsenzorg.", effecten: "+Loyaliteit, +Populariteit" },
+    keuze_c: { tekst: "Stel een onderzoek voor naar een eerlijkere verdeelsleutel.", effecten: "+Dossierkennis" },
+    nieuws_item: "Zorggeld: ggz of huisarts eerst?",
+  },
+  'Onderwijs & Wetenschap': {
+    dilemma_context: "Een wetsvoorstel introduceert een verplichte rekentoets voor alle brugklassers. Scholen waarschuwen voor extra werkdruk, ouders zijn juist voorstander.",
+    dilemma_vraag: "Je moet positie kiezen over de verplichte rekentoets, tussen de wens van ouders en de zorgen van scholen.",
+    keuze_a: { tekst: "Steun de verplichte rekentoets.", effecten: "+Populariteit, -Loyaliteit" },
+    keuze_b: { tekst: "Verzet je tegen de toets vanwege de werkdruk op scholen.", effecten: "+Loyaliteit, -Populariteit" },
+    keuze_c: { tekst: "Stel een proef op enkele scholen voor, geen directe verplichting.", effecten: "+Dossierkennis, +Media" },
+    nieuws_item: "Rekentoets verdeelt Kamer en scholen",
+  },
+  'Justitie & Veiligheid': {
+    dilemma_context: "Na een reeks incidenten wil de minister de bevoegdheden van de politie bij preventief fouilleren uitbreiden. Burgerrechtenorganisaties waarschuwen voor etnisch profileren.",
+    dilemma_vraag: "Je moet stelling nemen over de uitbreiding van fouilleerbevoegdheden, tussen veiligheid en grondrechten.",
+    keuze_a: { tekst: "Steun de uitbreiding voor meer veiligheid op straat.", effecten: "+Populariteit, -Integriteit" },
+    keuze_b: { tekst: "Verzet je tegen de uitbreiding vanwege het risico op profileren.", effecten: "+Integriteit, -Populariteit" },
+    keuze_c: { tekst: "Vraag om onafhankelijk toezicht als voorwaarde voor de uitbreiding.", effecten: "+Dossierkennis, +Media" },
+    nieuws_item: "Fouilleerbevoegdheden verdelen de Kamer",
+  },
+  'Financiën & Economie': {
+    dilemma_context: "Het kabinet moet een gat in de begroting dichten en overweegt zowel lastenverzwaring voor bedrijven als bezuiniging op toeslagen. Beide opties liggen gevoelig.",
+    dilemma_vraag: "Je moet kiezen hoe je stelling neemt over de manier waarop het begrotingstekort wordt gedicht.",
+    keuze_a: { tekst: "Steun lastenverzwaring voor bedrijven.", effecten: "+Integriteit, -Loyaliteit" },
+    keuze_b: { tekst: "Steun de kabinetslijn: bezuiniging op toeslagen.", effecten: "+Loyaliteit, -Populariteit" },
+    keuze_c: { tekst: "Pleit voor een gespreide aanpak over meerdere jaren.", effecten: "+Dossierkennis, +Media" },
+    nieuws_item: "Kamer zoekt uitweg uit begrotingsgat",
+  },
+  'Migratie & Asiel': {
+    dilemma_context: "Een asielzoekerscentrum in een kleine gemeente zorgt voor onrust onder omwonenden, terwijl de landelijke opvangcapaciteit krap blijft.",
+    dilemma_vraag: "Je wordt gevraagd te reageren op de onrust rond het asielzoekerscentrum, terwijl de opvangnood onverminderd hoog is.",
+    keuze_a: { tekst: "Steun de opvang en ga in gesprek met bezorgde omwonenden.", effecten: "+Integriteit, -Populariteit" },
+    keuze_b: { tekst: "Pleit voor een kleinere opvanglocatie om de onrust te dempen.", effecten: "+Populariteit, -Integriteit" },
+    keuze_c: { tekst: "Stel voor de opvang over meerdere gemeenten te spreiden.", effecten: "+Dossierkennis, +Media" },
+    nieuws_item: "Onrust rond nieuw asielzoekerscentrum",
+  },
+  'Defensie & Buitenlandse Zaken': {
+    dilemma_context: "Bondgenoten vragen Nederland extra materieel te leveren aan een conflictgebied. Het kabinet weegt de bijdrage af tegen de eigen defensiereserves.",
+    dilemma_vraag: "Je moet stelling nemen over een extra Nederlandse bijdrage aan bondgenoten, terwijl de eigen defensiecapaciteit al onder druk staat.",
+    keuze_a: { tekst: "Steun de extra bijdrage aan de bondgenoten.", effecten: "+Media, -Dossierkennis" },
+    keuze_b: { tekst: "Pleit voor terughoudendheid om de eigen reserves te sparen.", effecten: "+Dossierkennis, -Populariteit" },
+    keuze_c: { tekst: "Stel een kleinere, symbolische bijdrage voor.", effecten: "+Loyaliteit" },
+    nieuws_item: "Kamer verdeeld over defensiebijdrage",
+  },
+  'Sociale Zekerheid & Arbeid': {
+    dilemma_context: "Werkgevers pleiten voor versoepeling van het ontslagrecht om flexibeler te kunnen inspelen op de economie, vakbonden waarschuwen voor meer onzekerheid voor werknemers.",
+    dilemma_vraag: "Je moet kiezen hoe je stelling neemt in het debat over versoepeling van het ontslagrecht.",
+    keuze_a: { tekst: "Steun versoepeling van het ontslagrecht.", effecten: "+Media, -Loyaliteit" },
+    keuze_b: { tekst: "Verzet je tegen versoepeling ter bescherming van werknemers.", effecten: "+Loyaliteit, -Media" },
+    keuze_c: { tekst: "Pleit voor versoepeling met extra bescherming voor oudere werknemers.", effecten: "+Dossierkennis, +Integriteit" },
+    nieuws_item: "Ontslagrecht verdeelt sociale partners",
+  },
+  'Landbouw, Natuur & Visserij': {
+    dilemma_context: "Een Europese afspraak verplicht Nederland de stikstofuitstoot verder terug te dringen. Boerenorganisaties protesteren tegen de gevolgen voor hun bedrijfsvoering.",
+    dilemma_vraag: "Je moet stelling nemen over de uitvoering van de stikstofafspraak, tussen boerenbelangen en Europese verplichtingen.",
+    keuze_a: { tekst: "Steun een snelle uitvoering van de stikstofafspraak.", effecten: "+Integriteit, -Populariteit" },
+    keuze_b: { tekst: "Pleit voor uitstel en meer ruimte voor boeren.", effecten: "+Populariteit, -Integriteit" },
+    keuze_c: { tekst: "Stel een overgangsregeling met compensatie voor boeren voor.", effecten: "+Dossierkennis, +Media" },
+    nieuws_item: "Stikstofafspraak zet boeren onder druk",
+  },
+  'Digitale Zaken & Technologie': {
+    dilemma_context: "Een nieuw wetsvoorstel geeft de overheid ruimere bevoegdheden om online communicatie te monitoren in de strijd tegen cybercriminaliteit. Privacyorganisaties maken bezwaar.",
+    dilemma_vraag: "Je moet stelling nemen over de uitbreiding van digitale opsporingsbevoegdheden, tussen veiligheid en privacy.",
+    keuze_a: { tekst: "Steun de uitbreiding van de opsporingsbevoegdheden.", effecten: "+Populariteit, -Integriteit" },
+    keuze_b: { tekst: "Verzet je tegen de uitbreiding vanwege de privacyrisico's.", effecten: "+Integriteit, -Populariteit" },
+    keuze_c: { tekst: "Vraag om strikte rechterlijke toetsing als voorwaarde.", effecten: "+Dossierkennis, +Media" },
+    nieuws_item: "Digitale opsporing zet privacy onder druk",
+  },
+  'Europese Zaken': {
+    dilemma_context: "In Brussel wordt onderhandeld over een nieuw Europees begrotingsakkoord dat lidstaten dwingt tot strengere begrotingsdiscipline. Het kabinet moet een positie bepalen.",
+    dilemma_vraag: "Je moet stelling nemen over de Nederlandse inzet bij de onderhandelingen over het Europese begrotingsakkoord.",
+    keuze_a: { tekst: "Steun strengere Europese begrotingsregels.", effecten: "+Integriteit, -Loyaliteit" },
+    keuze_b: { tekst: "Pleit voor meer nationale begrotingsruimte.", effecten: "+Loyaliteit, +Populariteit" },
+    keuze_c: { tekst: "Stel voor pas in te stemmen na aanpassing van de voorstellen.", effecten: "+Dossierkennis, +Media" },
+    nieuws_item: "Kamer verdeeld over Europees begrotingsakkoord",
+  },
+  'Infrastructuur & Waterstaat': {
+    dilemma_context: "Achterstallig onderhoud aan bruggen en sluizen dwingt het kabinet tot een grote investering, die ten koste kan gaan van nieuwe wegenbouwprojecten elders in het land.",
+    dilemma_vraag: "Je moet stelling nemen over de verdeling van het infrastructuurbudget tussen onderhoud en nieuwe wegenbouw.",
+    keuze_a: { tekst: "Steun voorrang voor onderhoud van bestaande bruggen en sluizen.", effecten: "+Integriteit, +Dossierkennis" },
+    keuze_b: { tekst: "Pleit voor doorgang van de nieuwe wegenbouwprojecten.", effecten: "+Populariteit, -Integriteit" },
+    keuze_c: { tekst: "Stel een gefaseerde aanpak voor die beide deels bedient.", effecten: "+Media" },
+    nieuws_item: "Onderhoud of nieuwbouw: Kamer kiest",
+  },
+  // Generieke fallback voor het geval state.theme geen exacte match heeft
+  // (bijvoorbeeld een oude save met een afwijkende themanaam).
+  '_default': {
+    dilemma_context: "De Kamer debatteert deze week over de algemene begrotingslijnen van het kabinet. Coalitie en oppositie staan tegenover elkaar over de te maken keuzes.",
+    dilemma_vraag: "Je moet als Kamerlid stelling nemen in het begrotingsdebat, tussen steun aan het kabinetsbeleid en je eigen afweging.",
+    keuze_a: { tekst: "Steun de begrotingslijn van het kabinet.", effecten: "+Loyaliteit" },
+    keuze_b: { tekst: "Neem publiekelijk afstand van een onderdeel van de begroting.", effecten: "+Integriteit, -Loyaliteit" },
+    keuze_c: { tekst: "Vraag om een grondiger onderbouwing voordat je een standpunt inneemt.", effecten: "+Dossierkennis" },
+    nieuws_item: "Kamer buigt zich over begroting",
+  },
+};
+
+function getFallbackDilemma(theme) {
+  return FALLBACK_DILEMMAS[theme] || FALLBACK_DILEMMAS['_default'];
+}
+
 // ==================== PREFETCH ====================
 
 // Zuivere fetch: geen state-mutatie. Herbruikbaar voor de live aanroep en
 // voor de prefetch van de volgende week. Gebruikt uitsluitend de
 // meegegeven `week`, nooit state.week (zelfde reden als fetchMotiesContent
 // hierboven: tijdens een prefetch loopt state.week nog achter).
+//
+// Faalt NOOIT (geeft altijd een bruikbaar dilemma-object terug): bij een
+// netwerkfout, API-fout of onbruikbare AI-respons valt deze functie terug
+// op een handgeschreven voorbeelddilemma voor het gekozen thema (zie
+// FALLBACK_DILEMMAS hierboven) in plaats van de speler met een foutmelding
+// te laten zitten — zie scenario#2. De fout wordt wel gelogd zodat dit
+// zichtbaar blijft voor wie de browserconsole/productielogs bekijkt.
 async function fetchDilemmaContent(week, party) {
-  const dilemmaResult = await callClaude([{
-    role: 'user',
-    content: `Genereer ALLEEN het dilemma voor week ${week} voor ${state.name} (${party.name}, ${state.theme}).
+  const label = `dilemma week ${week}`;
+  try {
+    const dilemmaResult = await callClaude([{
+      role: 'user',
+      content: `Genereer ALLEEN het dilemma voor week ${week} voor ${state.name} (${party.name}, ${state.theme}).
 
 Geef ALLEEN dit JSON-object, niets anders:
 {
@@ -1522,22 +1668,23 @@ Geef ALLEEN dit JSON-object, niets anders:
   "keuze_c": { "tekst": "Optie C (1-2 zinnen)", "effecten": "bijv. +Integriteit" },
   "nieuws_item": "Nieuwsflits max 8 woorden"
 }`
-  }], 'Je bent spelmotor voor Nederlandse parlementaire simulatie. COALITIE (D66/VVD/CDA): kabinet steunen geeft loyaliteit. OPPOSITIE (alle andere partijen): kabinet bekritiseren geeft loyaliteit. Antwoord ALLEEN met geldig JSON.', 500);
+    }], 'Je bent spelmotor voor Nederlandse parlementaire simulatie. COALITIE (D66/VVD/CDA): kabinet steunen geeft loyaliteit. OPPOSITIE (alle andere partijen): kabinet bekritiseren geeft loyaliteit. Antwoord ALLEEN met geldig JSON.', 500, label);
 
-  let dc = dilemmaResult.replace(/\`\`\`json/gi,'').replace(/\`\`\`/g,'').trim();
-  const djm = dc.match(/\{[\s\S]*\}/); if (djm) dc = djm[0];
-  try {
+    let dc = dilemmaResult.replace(/\`\`\`json/gi,'').replace(/\`\`\`/g,'').trim();
+    const djm = dc.match(/\{[\s\S]*\}/); if (djm) dc = djm[0];
     return JSON.parse(dc);
   } catch(e) {
-    throw new Error('Dilemma kon niet worden verwerkt. Probeer opnieuw.');
+    console.warn(`Dilemma-call mislukt (${label}): ${e.message} — val terug op voorbeelddilemma voor thema "${state.theme}".`);
+    return getFallbackDilemma(state.theme);
   }
 }
 
 // Haalt dilemma + moties op voor `week` zonder ze toe te passen op state,
 // en levert het resultaat als één promise. Gebruikt door schedulePrefetchNextWeek
-// hieronder; als de dilemma-call faalt gooien we het hele prefetch-resultaat
-// weg (ook eventuele al gelukte moties) zodat generateWeeklyContent altijd
-// gewoon terugvalt op de normale, synchrone weg.
+// hieronder. fetchDilemmaContent() faalt sinds de fallback-dilemma's
+// (scenario#2) niet meer af op een mislukte AI-call, dus de .catch()
+// onderaan is een defensieve vangnet voor werkelijk onverwachte fouten
+// (bijv. als `party` niet gevonden wordt), niet de normale foutafhandeling.
 function buildWeekPrefetch(week) {
   const party = PARTIES.find(p => p.id === state.party);
   if (!party) return Promise.resolve(null);
@@ -1586,6 +1733,17 @@ async function generateWeeklyContent() {
       weekPrefetch = null;
     }
 
+    // Start de moties-call (indien nodig) VÓÓR de dilemma-call hieronder
+    // wordt afgewacht, zodat beide gelijktijdig lopen i.p.v. na elkaar —
+    // dat scheelt tot de helft van de wachttijd tot alles klaar is (max
+    // van de twee call-tijden i.p.v. de som), zie technical#2. Losstaand
+    // van de dilemma-cache-status hieronder: ook als het dilemma uit de
+    // prefetch komt (dus instant beschikbaar is) kan de moties-prefetch
+    // apart mislukt zijn en dan alsnog live opgehaald moeten worden.
+    if (!(cached && cached.motiesData)) {
+      loadMotiesAchtergrond(week, party); // fire-and-forget, start nu al
+    }
+
     let dilemma;
     if (cached && cached.dilemma) {
       dilemma = cached.dilemma;
@@ -1605,12 +1763,11 @@ async function generateWeeklyContent() {
     renderAgenda();
     hideLoading();
 
-    // Moties: uit de prefetch toepassen als die er zijn, anders zoals
-    // voorheen op de achtergrond ophalen.
+    // Moties: uit de prefetch toepassen als die er zijn; anders is de
+    // live fetch hierboven al gestart (fire-and-forget) en past
+    // loadMotiesAchtergrond() de state zelf toe zodra die klaar is.
     if (cached && cached.motiesData) {
       applyMotiesContent(week, cached.motiesData);
-    } else {
-      loadMotiesAchtergrond(week, party);
     }
 
   } catch(e) {
@@ -1700,7 +1857,7 @@ De stat_changes moeten logisch zijn bij de gemaakte keuze. Gebruik waarden tusse
 fractie_change is een getal tussen -15 en +15.
 uitleg is een educatieve toelichting van max 2 zinnen voor middelbare scholieren.`
     }],
-    'Je bent een spelmotor. Antwoord uitsluitend met geldige JSON, zonder extra tekst of markdown.', 400);
+    'Je bent een spelmotor. Antwoord uitsluitend met geldige JSON, zonder extra tekst of markdown.', 400, `dilemma-gevolg week ${state.week}`);
 
     let res;
     try {
@@ -1828,7 +1985,7 @@ Antwoord ALLEEN als geldige JSON zonder markdown:
   "overwegende": "overwegende dat [reden]; overwegende dat [reden 2];",
   "verzoekt": "verzoekt de regering [concrete opdracht]"
 }`
-    }], 'Spelmotor. Antwoord uitsluitend met geldige JSON zonder extra tekst.', 350);
+    }], 'Spelmotor. Antwoord uitsluitend met geldige JSON zonder extra tekst.', 350, 'eigen-motie');
 
     let clean = motie.replace(/```json/gi,'').replace(/```/g,'').trim();
     const jm2 = clean.match(/\{[\s\S]*\}/);
@@ -2470,7 +2627,7 @@ Schrijf over:
 4. Een concrete les over het Kamerlidmaatschap
 
 Toon: journalistiek, nuchter, educatief voor middelbare scholieren. Geen oordeel over herverkiezing.`
-    }], 'Je bent een parlementaire journalist. Schrijf alleen het verslag, geen opmaak of bullets.', 600);
+    }], 'Je bent een parlementaire journalist. Schrijf alleen het verslag, geen opmaak of bullets.', 600, 'eindverslag');
 
     document.getElementById('final-text').innerHTML = verslag.split('\n').join('<br>');
   } catch(e) {
