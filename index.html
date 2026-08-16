@@ -239,6 +239,10 @@
     </div>
   </div>
 
+  <div class="progress-track" title="Voortgang naar het eindrapport">
+    <div class="progress-fill" id="progress-fill" style="width:8%"></div>
+  </div>
+
   <div id="nextweek-status-bar" style="
     background:rgba(0,0,0,0.3);padding:3px 12px;font-size:10px;
     color:var(--dim);border-bottom:1px solid var(--border);flex-shrink:0;
@@ -720,6 +724,19 @@ function renderTopbar() {
   document.getElementById('tb-week').textContent = state.week + ' / 12';
   document.getElementById('tb-theme').textContent = state.theme;
   document.getElementById('sb-week').textContent = 'Week ' + state.week;
+
+  // Voortgangsbalk richting het eindrapport (player-experience#3): de
+  // herhaling van dezelfde vijf weekonderdelen kan rond week 8-10 sleur
+  // veroorzaken zonder dat de UI ooit benadrukt hoe dicht het einde is.
+  const progressEl = document.getElementById('progress-fill');
+  if (progressEl) {
+    const pct = Math.max(4, Math.min(100, Math.round(state.week / 12 * 100)));
+    progressEl.style.width = pct + '%';
+    const wekenTeGaan = Math.max(0, 12 - state.week);
+    progressEl.parentElement.title = wekenTeGaan === 0
+      ? 'Laatste week — het eindrapport volgt hierna'
+      : `Nog ${wekenTeGaan} ${wekenTeGaan === 1 ? 'week' : 'weken'} tot het eindrapport`;
+  }
 }
 
 
@@ -892,6 +909,24 @@ function renderFractie() {
   coalInfo.innerHTML = `D66: 26<br>VVD: 22<br>CDA: 18<br><span style="color:var(--teal)">Totaal: 66</span><br><span style="color:var(--dim);font-size:9px">Minderheidskabinet</span>`;
 
   const party = PARTIES.find(p => p.id === state.party);
+
+  // Concrete handelingsperspectief bij de fractieleider-waarschuwing
+  // (player-experience#5): de eerdere tekst benoemde spanning, maar zei
+  // nooit wat de speler eraan kon doen. Richting is afhankelijk van
+  // coalitie/oppositie, zelfde dualisme-asymmetrie als bij loyaliteit
+  // opbouwen via dilemma's (zie ook de uitleg hieronder, educatief#3).
+  const steunActie = party && party.coalition
+    ? 'het kabinet steunen'
+    : 'het kabinet kritisch bevragen';
+  let fractieWaarschuwing;
+  if (state.fractieApproval >= 80) {
+    fractieWaarschuwing = '✓ Fractieleider is tevreden';
+  } else if (state.fractieApproval >= 55) {
+    fractieWaarschuwing = `⚠ Fractieleider let op je — kies de komende weken vaker voor opties die ${steunActie} om dit te herstellen.`;
+  } else {
+    fractieWaarschuwing = `✗ Je positie in de fractie staat onder druk — herhaaldelijk afwijken van de fractielijn kost goedkeuring. Kies bewust vaker voor opties die ${steunActie}, ook al kan dat spanning geven met je integriteit.`;
+  }
+
   document.getElementById('fractie-verwachting').innerHTML =
     `<div style="font-size:12px; color:var(--white); line-height:1.7">
       <span class="c-dim">Fractie-goedkeuring:</span>
@@ -902,9 +937,15 @@ function renderFractie() {
         <span class="c-yellow" style="font-size:12px;margin-left:6px">${state.fractieApproval}%</span>
       </div>
       <div style="margin-top:8px;color:var(--dim);font-size:11px">
-        ${state.fractieApproval >= 80 ? '✓ Fractieleider is tevreden' :
-          state.fractieApproval >= 55 ? '⚠ Fractieleider let op je' :
-          '✗ Je positie in de fractie staat onder druk'}
+        ${fractieWaarschuwing}
+      </div>
+      <div style="margin-top:10px;padding:8px;border:1px solid var(--border);background:rgba(0,0,0,0.15);font-size:10px;color:var(--dim);line-height:1.6">
+        <strong style="color:var(--teal)">Waarom werkt loyaliteit zo?</strong>
+        Dit heet dualisme: Kamer en kabinet zijn gescheiden machten, ook al steunen
+        coalitiefracties het kabinet meestal. Coalitiepartijen bouwen loyaliteit op
+        door het kabinet te steunen; oppositiepartijen juist door het kabinet
+        kritisch te controleren. Beide zijn een legitieme invulling van het
+        Kamerlidmaatschap — jij speelt momenteel als ${party && party.coalition ? 'coalitiepartij' : 'oppositiepartij'}.
       </div>
     </div>`;
 
@@ -2051,6 +2092,16 @@ const MINISTERS = {
 
 // ==================== WERKBEZOEK ====================
 
+// Zet een effecten-object ({ dossier: 3, populariteit: -1, ... }) om naar
+// leesbare stat-badges, zodat de speler vóór het klikken al ziet welke
+// stat een werkbezoek-optie raakt en hoe sterk — hetzelfde patroon als de
+// "⚠ Mediarisico"-vlag, maar dan voor de overige stats (player-experience#4).
+function formatEffectenBadges(effecten) {
+  return Object.entries(effecten)
+    .filter(([key, val]) => val !== 0 && key in STAT_LABELS)
+    .map(([key, val]) => `<span class="uitleg-stat ${val > 0 ? 'pos' : 'neg'}">${STAT_LABELS[key]}: ${val > 0 ? '+' : ''}${val}</span>`)
+    .join('');
+}
 
 function closeModal() {
   const modal = document.getElementById('activity-modal');
@@ -2071,6 +2122,7 @@ function openWerkbezoek() {
       <div class="wbopt-type">${escapeHtml(opt.type)}${opt.media_risico ? ' ⚠ Mediarisico' : ''}</div>
       <div class="wbopt-title">${escapeHtml(typeof opt.title === 'function' ? opt.title(state.theme) : opt.title)}</div>
       <div class="wbopt-desc">${escapeHtml(typeof opt.desc === 'function' ? opt.desc(state.theme) : opt.desc)}</div>
+      <div class="wbopt-effecten">${formatEffectenBadges(opt.effecten)}</div>
     </div>`
   ).join('');
 
