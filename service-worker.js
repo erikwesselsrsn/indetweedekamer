@@ -1,12 +1,22 @@
 // service-worker.js
 // Cacht de statische bestanden zodat het spel snel laadt.
 // API-calls naar Netlify/Anthropic worden nooit gecacht (altijd live).
-
-const CACHE_NAME = 'kamerlid-v1';
+//
+// BELANGRIJK: dit bestand cacht cache-first (zie de fetch-handler onderaan),
+// dus een eerder bezoekende browser blijft de oude index.html/styles.css
+// tonen totdat er een NIEUWE versie van service-worker.js wordt uitgerold
+// (de browser detecteert alleen een update als deze byte-voor-byte
+// verschilt) ÉN de CACHE_NAME hierbeneden is opgehoogd (anders blijft de
+// oude cache-inhoud onder dezelfde naam gewoon staan). Verhoog dus bij
+// ELKE deploy die index.html, styles.css of manifest.json wijzigt het
+// versienummer hieronder — ook als er verder niets aan dit bestand
+// verandert.
+const CACHE_NAME = 'kamerlid-v2';
 const STATIC_FILES = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/styles.css',
 ];
 
 // Installatie: cache statische bestanden
