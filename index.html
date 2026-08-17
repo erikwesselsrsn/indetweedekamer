@@ -119,11 +119,12 @@
   </div>
 </div>
 
-<!-- START SCREEN -->
+<!-- START SCREEN (stap 1: naam + commissie) -->
 <div class="screen active" id="start-screen">
   <div class="start-inner">
     <div class="game-title">KAMERLID</div>
     <div class="game-subtitle">Tweede Kamer Simulatie · Den Haag · 2026</div>
+    <div class="step-indicator">Stap 1 van 2 &middot; Jouw gegevens</div>
 
     <div class="start-panel">
       <h3>Jouw gegevens</h3>
@@ -154,12 +155,6 @@
       </div>
     </div>
 
-    <div class="start-panel">
-      <h3>Kies je fractie</h3>
-      <div class="party-grid" id="party-grid"></div>
-    </div>
-
-
     <div class="start-panel" id="load-panel" style="display:none">
       <h3>Eerder Spel Hervatten</h3>
       <div style="font-size:11px;color:var(--dim);margin-bottom:10px;line-height:1.7">
@@ -167,8 +162,28 @@
       </div>
       <div id="start-save-slots"></div>
     </div>
-    <button class="btn-start" onclick="startGame()">▶ NIEUW SPEL STARTEN</button>
+    <button class="btn-start" onclick="naarPartijkeuze()">▶ VOLGENDE</button>
     <div class="error-msg" id="start-error" style="text-align:center"></div>
+  </div>
+</div>
+
+<!-- PARTY SCREEN (stap 2: fractiekeuze) -->
+<div class="screen" id="party-screen">
+  <div class="start-inner">
+    <div class="game-title">KAMERLID</div>
+    <div class="game-subtitle">Tweede Kamer Simulatie · Den Haag · 2026</div>
+    <div class="step-indicator">Stap 2 van 2 &middot; Kies je fractie</div>
+
+    <div class="start-panel">
+      <h3>Kies je fractie</h3>
+      <div class="party-grid" id="party-grid"></div>
+    </div>
+
+    <div class="start-btn-row">
+      <button class="btn-back" onclick="terugNaarGegevens()">◀ TERUG</button>
+      <button class="btn-start" onclick="startGame()">▶ NIEUW SPEL STARTEN</button>
+    </div>
+    <div class="error-msg" id="party-error" style="text-align:center"></div>
   </div>
 </div>
 
@@ -746,31 +761,79 @@ function renderTopbar() {
 // UITSLUITEND de meegegeven `week`, nooit state.week -- tijdens een prefetch
 // loopt state.week namelijk nog achter op de week waarvoor we ophalen.
 async function fetchMotiesContent(week, party) {
+  // Let op: de indiener wordt HIER NIET meer aan de AI gevraagd (was voorheen
+  // een "indiener"-veld in de JSON, met een instructie om alleen zittende
+  // Kamerleden te gebruiken). Dat leidde er in de praktijk toe dat de AI de
+  // indiener bijna altijd uit de partij van de speler koos, terwijl in de
+  // werkelijke Tweede Kamer de overgrote meerderheid van de moties van ANDERE
+  // fracties komt (17 fracties, speler vertegenwoordigt er maar 1). De
+  // indiener wordt daarom na ontvangst deterministisch en zetel-gewogen
+  // toegewezen door pickMotieIndiener() -- zie applyMotiesContent().
+  // scenario#4: het thema-veld in de JSON hieronder wordt door de speler
+  // gezien als badge per motie (renderMoties) EN wordt hierna in
+  // applyMotiesContent() altijd hard overschreven met state.theme, ongeacht
+  // wat de AI teruggeeft -- dus de badge zelf kan nooit meer afwijken van
+  // de commissie van de speler. Wat we niet zonder extra AI-call kunnen
+  // afdwingen is dat de INHOUD (titel/overwegende/verzoekt) ook werkelijk
+  // over dit onderwerp gaat -- vandaar de expliciete, herhaalde eis
+  // hieronder in plaats van het thema alleen terloops te noemen.
   const motiesResult = await callClaude([{
     role: 'user',
     content: `Genereer 1 tot 3 moties (variabel) voor week ${week} in het Nederlandse parlement.
-Partij: ${party.name}. Thema: ${state.theme}.
+
+BELANGRIJKE EIS: elke motie moet INHOUDELIJK gaan over het thema "${state.theme}" --
+niet alleen terzijde genoemd, maar het onderwerp van de titel, overwegende en
+het verzoekt-gedeelte. Geen enkele motie mag over een ander beleidsterrein gaan.
+Wie de motie indient wordt los van deze content bepaald -- ga daar niet van uit.
 
 Geef ALLEEN dit JSON-object:
 {
   "moties": [
     {
-      "titel": "Motie over [onderwerp]",
-      "indiener": "[naam zittend Kamerlid]",
-      "overwegende": "overwegende dat [reden];",
-      "verzoekt": "verzoekt de regering [opdracht]",
+      "titel": "Motie over [onderwerp binnen ${state.theme}]",
+      "overwegende": "overwegende dat [reden, gerelateerd aan ${state.theme}];",
+      "verzoekt": "verzoekt de regering [opdracht binnen ${state.theme}]",
       "kabinet_advies": "oordeel Kamer / ontraden / ondersteuning beleid",
       "thema": "${state.theme}"
     }
   ]
-}
-
-INDIENERS: gebruik ALLEEN zittende Kamerleden: D66(Paternotte/Sneller/Paulusma/Podt/Klos/Rooderkerk), VVD(Brekelmans/Becker/Ellian/De Groot/Michon-Derkzen/Bikkers), GL-PvdA(Klaver/Kathmann/De Hoop/Kröger/Bromet/Bushoff/Moorman/Lahlah), CDA(Bontenbal/Steen/Krul/Lohman/Jumelet/Van den Brink), PVV(Wilders/Bosma/Maeijer/Mulder/Kops/De Roon/Jansen), JA21(Eerdmans/Coenradie/Goudzwaard), FVD(De Vos/Van Meijeren/Van Houwelingen), Markuszower(Markuszower/Heutink/Schilder), BBB(Van der Plas/Vermeer/Wiersma), SP(Dijk/Beckerman/Dobbe), CU(Bikker/Ceder/Grinwis), PvdD(Kostić/Ouwehand/Teunissen), SGP(Stoffer/Flach), DENK(Van Baarle/El Abassi/Ergin), 50PLUS(Struijs/Van Brenk), Volt(Dassen), Keijzer(Keijzer)`
-  }], 'Antwoord ALLEEN met geldig JSON. Geen tekst ervoor of erna.', 700, `moties week ${week}`);
+}`
+  }], 'Antwoord ALLEEN met geldig JSON. Geen tekst ervoor of erna.', 500, `moties week ${week}`);
 
   let mc = motiesResult.replace(/\`\`\`json/gi,'').replace(/\`\`\`/g,'').trim();
   const mjm = mc.match(/\{[\s\S]*\}/); if (mjm) mc = mjm[0];
   return JSON.parse(mc);
+}
+
+// Kiest een realistische, zetel-gewogen indiener voor een motie: de kans dat
+// een fractie wordt gekozen is evenredig met haar aantal zetels (van de 150),
+// over ALLE fracties inclusief die van de speler zelf -- dus een motie van de
+// eigen partij kan nog steeds voorkomen (net als in de praktijk), maar niet
+// systematisch bij vrijwel elke motie zoals voorheen. `vermijdNamen` voorkomt
+// dat twee moties in dezelfde week toevallig exact dezelfde indiener krijgen.
+function pickMotieIndiener(vermijdNamen) {
+  const avoid = vermijdNamen || [];
+  for (let poging = 0; poging < 8; poging++) {
+    const totalSeats = PARTIES.reduce((s, p) => s + p.seats, 0);
+    let r = Math.random() * totalSeats;
+    let gekozenPartij = PARTIES[PARTIES.length - 1];
+    for (const p of PARTIES) {
+      if (r < p.seats) { gekozenPartij = p; break; }
+      r -= p.seats;
+    }
+    const fractie = FRACTIE_LEDEN[gekozenPartij.id];
+    const leden = (fractie && fractie.leden && fractie.leden.length) ? fractie.leden : [gekozenPartij.name];
+    const naam = leden[Math.floor(Math.random() * leden.length)];
+    if (!avoid.includes(naam)) {
+      return { naam, partij: gekozenPartij.name };
+    }
+  }
+  // Kleine kans dat 8 pogingen allemaal een duplicaat troffen (vooral bij
+  // eenmansfracties) -- dan gewoon accepteren, beter dan blijven loopen.
+  const fallbackPartij = PARTIES[Math.floor(Math.random() * PARTIES.length)];
+  const fallbackLeden = FRACTIE_LEDEN[fallbackPartij.id];
+  const naam = (fallbackLeden && fallbackLeden.leden && fallbackLeden.leden[0]) || fallbackPartij.name;
+  return { naam, partij: fallbackPartij.name };
 }
 
 // Past een eerder (of net) opgehaald moties-resultaat toe op de state.
@@ -778,14 +841,20 @@ INDIENERS: gebruik ALLEEN zittende Kamerleden: D66(Paternotte/Sneller/Paulusma/P
 // reden als bij fetchMotiesContent hierboven.
 function applyMotiesContent(week, motiesData) {
   if (!motiesData || !Array.isArray(motiesData.moties)) return;
+  const gebruikteNamen = [];
   motiesData.moties.forEach(m => {
+    const gekozen = pickMotieIndiener(gebruikteNamen);
+    gebruikteNamen.push(gekozen.naam);
     state.moties.push({
       title: m.titel || 'Motie',
-      indiener: m.indiener || '—',
+      indiener: `${gekozen.naam} (${gekozen.partij})`,
       overwegende: m.overwegende || '',
       verzoekt: m.verzoekt || '',
       kabinet_advies: m.kabinet_advies || '—',
-      thema: m.thema || state.theme,
+      // Hard geforceerd op state.theme (scenario#4), niet m.thema || state.theme:
+      // de badge die de speler ziet mag NOOIT afwijken van de eigen commissie,
+      // ook niet als de AI toevallig een ander (of geen) thema teruggeeft.
+      thema: state.theme,
       week: week,
     });
   });
@@ -1160,6 +1229,8 @@ function restartGame() {
   if (nameEl) nameEl.value = '';
   const errEl = document.getElementById('start-error');
   if (errEl) errEl.textContent = '';
+  const perrEl = document.getElementById('party-error');
+  if (perrEl) perrEl.textContent = '';
   const introEl = document.getElementById('intro-body');
   if (introEl) introEl.innerHTML = '<span class="loading">Artikel wordt geladen...</span>';
   const contBtn = document.getElementById('btn-intro-continue');
@@ -1220,6 +1291,24 @@ function toonVerkiezingen() {
 }
 
 function naarSpel() {
+  showScreen('start-screen');
+}
+
+// Stap 1 -> stap 2: naam is verplicht voordat de fractiekeuze zin heeft,
+// dus die validatie hoort hier en niet pas bij startGame() (player-experience:
+// het inlogscherm was overvol met naam + commissie + fractie tegelijk).
+function naarPartijkeuze() {
+  const name = document.getElementById('player-name').value.trim();
+  const err = document.getElementById('start-error');
+  if (err) err.textContent = '';
+  if (!name) { if (err) err.textContent = 'Vul je naam in.'; return; }
+  buildPartyGrid();
+  showScreen('party-screen');
+  const perr = document.getElementById('party-error');
+  if (perr) perr.textContent = '';
+}
+
+function terugNaarGegevens() {
   showScreen('start-screen');
 }
 
@@ -1365,6 +1454,59 @@ function loadFromStart(slotIdx) {
   weekPrefetch = null;
   state = { ...saved, apiKey: hardcodedKey };
   showGame();
+  showResumeSamenvatting();
+}
+
+// "Waar was ik gebleven?"-samenvatting bij het hervatten van een opgeslagen
+// spel (player-experience#2): zonder dit landt een speler die na een pauze
+// terugkomt zonder context meteen midden in de agenda van de huidige week,
+// terwijl newsItems (het tickertje bovenin) allang bijhoudt wat er speelde.
+// Kost geen AI-call: puur een weergave van al aanwezige state.
+function showResumeSamenvatting() {
+  const existing = document.getElementById('resume-modal');
+  if (existing) existing.remove();
+  if (!state || !state.name) return;
+
+  const party = PARTIES.find(p => p.id === state.party);
+  const recentNews = (state.newsItems || []).slice(0, 4);
+  const laatsteBesluit = (state.decisions && state.decisions.length)
+    ? state.decisions[state.decisions.length - 1]
+    : null;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'resume-modal';
+  modal.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">WAAR WAS JE GEBLEVEN?</span>
+        <button class="modal-close" onclick="closeResumeSamenvatting()">✕ SLUITEN</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-intro">
+          Je bent <strong>${escapeHtml(state.name)}</strong>, Kamerlid voor
+          ${escapeHtml(party ? party.name : (state.party || '?'))},
+          commissie ${escapeHtml(state.theme || '?')}. Je zit in
+          <strong>week ${state.week || 1} van 12</strong>.
+        </div>
+        ${laatsteBesluit ? `
+          <div class="resume-block-title">Je laatste besluit (week ${laatsteBesluit.week}):</div>
+          <div class="resume-block-text">${escapeHtml(laatsteBesluit.text)}</div>
+        ` : ''}
+        ${recentNews.length ? `
+          <div class="resume-block-title">Recent nieuws:</div>
+          <ul class="resume-news-list">
+            ${recentNews.map(n => `<li>${escapeHtml(n)}</li>`).join('')}
+          </ul>
+        ` : ''}
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function closeResumeSamenvatting() {
+  const modal = document.getElementById('resume-modal');
+  if (modal) modal.remove();
 }
 
 function toonStartSaves() {
@@ -1424,6 +1566,7 @@ function loadGame(slotIdx) {
   state = { ...saved, apiKey };
   showGame();
   showSaveMsg('✓ Spel geladen: ' + saved.name + ' (week ' + saved.week + ')');
+  showResumeSamenvatting();
 }
 
 function clearSave(slotIdx) {
@@ -1467,11 +1610,16 @@ async function startGame() {
   const name = document.getElementById('player-name').value.trim();
   const theme = document.getElementById('player-theme').value;
   const apiKey = 'proxy';
-  const err = document.getElementById('start-error');
-  err.textContent = '';
+  // Fout hoort nu op het fractiekeuze-scherm (stap 2) i.p.v. het oude,
+  // inmiddels verwijderde gecombineerde scherm.
+  const err = document.getElementById('party-error');
+  if (err) err.textContent = '';
 
-  if (!name) { err.textContent = 'Vul je naam in.'; return; }
-  if (!selectedParty) { err.textContent = 'Kies een fractie.'; return; }
+  // Defensieve her-check: normaal is naam al gevalideerd op stap 1
+  // (naarPartijkeuze), maar een speler kan met de terug-knop op stap 2
+  // belanden zonder naam als het veld handmatig leeggemaakt zou worden.
+  if (!name) { terugNaarGegevens(); const e2 = document.getElementById('start-error'); if (e2) e2.textContent = 'Vul je naam in.'; return; }
+  if (!selectedParty) { if (err) err.textContent = 'Kies een fractie.'; return; }
 
   initState(selectedParty, name, theme, apiKey);
 
@@ -1680,6 +1828,32 @@ function getFallbackDilemma(theme) {
   return FALLBACK_DILEMMAS[theme] || FALLBACK_DILEMMAS['_default'];
 }
 
+// Korte, thema-onafhankelijke reflectievragen die na elk dilemma worden
+// getoond (educatief#2). Bewust STATISCH en niet AI-gegenereerd: het gaat
+// om een denkoefening voor de speler zelf, niet om spelinhoud die per sessie
+// hoeft te verschillen — dat scheelt ook een AI-call (en dus tokenkosten)
+// per dilemma. Zie ook de reflectievragen per lesblok in
+// kamerlid-docentenhandleiding.md, die specifieker en periodiek bedoeld zijn
+// voor klassikaal gebruik; dit is de losse, individuele variant per keuze.
+const REFLECTIEVRAGEN = [
+  'Zou je deze keuze ook maken als niemand er ooit achter zou komen?',
+  'Welk argument vóór de optie die je NIET koos, vond je eigenlijk het sterkst?',
+  'Wie profiteert het meest van jouw keuze — en wie het minst?',
+  'Zou een Kamerlid van een heel andere partij hier hetzelfde kiezen, denk je?',
+  'Was dit vooral een principiële keuze, of vooral een strategische?',
+  'Wat zou je zeggen als een kiezer je hier morgen naar zou vragen?',
+  'Zou je nog steeds zo kiezen als je bedenkt hoe dit er over vier jaar uitziet?',
+  'Welke van je statistieken (dossierkennis, loyaliteit, populariteit, media, integriteit) vond je het zwaarst wegen bij deze keuze?',
+  'Zou je hetzelfde kiezen als je fractieleider niet meekeek?',
+  'Wat was het lastigste aan dit dilemma?',
+  'Had je fractie deze keuze van je verwacht — en maakt dat voor jou uit?',
+  'Is dit een keuze waar je later, als er meer bekend is, spijt van zou kunnen krijgen?',
+];
+
+function pickReflectievraag() {
+  return REFLECTIEVRAGEN[Math.floor(Math.random() * REFLECTIEVRAGEN.length)];
+}
+
 // ==================== PREFETCH ====================
 
 // Zuivere fetch: geen state-mutatie. Herbruikbaar voor de live aanroep en
@@ -1693,12 +1867,40 @@ function getFallbackDilemma(theme) {
 // FALLBACK_DILEMMAS hierboven) in plaats van de speler met een foutmelding
 // te laten zitten — zie scenario#2. De fout wordt wel gelogd zodat dit
 // zichtbaar blijft voor wie de browserconsole/productielogs bekijkt.
+// Vat de actuele spelstand samen (scenario#1): tot nu toe hield het dilemma
+// alleen rekening met de vaste coalitie/oppositie-regel in de systeemprompt
+// hieronder, nooit met wat de speler daadwoordelijk heeft opgebouwd of laten
+// verzwakken. Alleen vanaf week 2 (state.week wordt hier ontvangen als
+// `week`, dus we vergelijken met > 1): in week 1 zijn dit nog uitsluitend de
+// partij-basiswaarden, geen resultaat van spelerskeuzes, dus dan is er nog
+// niets zinnigs om "rekening mee te houden".
+function buildSpelstandContext(week) {
+  if (week <= 1 || !state.stats) return '';
+  const zinnen = [];
+  if (state.fractieApproval <= 40) {
+    zinnen.push(`de fractieleider is momenteel duidelijk ontevreden over ${state.name} (fractie-goedkeuring ${state.fractieApproval}/100)`);
+  } else if (state.fractieApproval >= 85) {
+    zinnen.push(`${state.name} staat er bij de fractieleider erg goed op (fractie-goedkeuring ${state.fractieApproval}/100)`);
+  }
+  const laag = Object.entries(state.stats)
+    .filter(([k, v]) => k !== 'energie' && v <= 20)
+    .map(([k]) => STAT_LABELS[k]);
+  const hoog = Object.entries(state.stats)
+    .filter(([k, v]) => k !== 'energie' && v >= 85)
+    .map(([k]) => STAT_LABELS[k]);
+  if (laag.length) zinnen.push(`${laag.join(' en ')} sta${laag.length === 1 ? 'at' : 'an'} opvallend laag`);
+  if (hoog.length) zinnen.push(`${hoog.join(' en ')} sta${hoog.length === 1 ? 'at' : 'an'} opvallend hoog`);
+  if (!zinnen.length) return '';
+  return `\n\nActuele spelstand: ${zinnen.join('; ')}. Laat dit, waar het natuurlijk past, meewegen in de context of inzet van het dilemma (bijvoorbeeld door er terloops naar te verwijzen) — forceer het niet als het niet logisch aansluit bij het thema.`;
+}
+
 async function fetchDilemmaContent(week, party) {
   const label = `dilemma week ${week}`;
   try {
+    const spelstandContext = buildSpelstandContext(week);
     const dilemmaResult = await callClaude([{
       role: 'user',
-      content: `Genereer ALLEEN het dilemma voor week ${week} voor ${state.name} (${party.name}, ${state.theme}).
+      content: `Genereer ALLEEN het dilemma voor week ${week} voor ${state.name} (${party.name}, ${state.theme}).${spelstandContext}
 
 Geef ALLEEN dit JSON-object, niets anders:
 {
@@ -1966,6 +2168,10 @@ uitleg is een educatieve toelichting van max 2 zinnen voor middelbare scholieren
           <div class="uitleg-text">${escapeHtml(res.uitleg || 'Elke politieke keuze heeft gevolgen voor hoe kiezers, media en je fractie je zien.')}</div>
           <div class="uitleg-text" style="margin-top:6px;color:var(--dim);font-style:italic">${fractieUitleg} Fractie-goedkeuring: ${fractieChange > 0 ? '+' : ''}${fractieChange}%</div>
           <div class="uitleg-stats">${uitlegItems}</div>
+        </div>
+        <div class="reflectie-box">
+          <div class="reflectie-title">🎓 Reflectievraag</div>
+          <div class="reflectie-text">${escapeHtml(pickReflectievraag())}</div>
         </div>`;
     }
 
