@@ -161,6 +161,10 @@
         Je hebt eerder een spel opgeslagen. Klik op <em>Doorgaan</em> om verder te spelen waar je gebleven bent.
       </div>
       <div id="start-save-slots"></div>
+      <div class="opslag-waarschuwing">
+        ⚠ Deze opslagen staan alleen in déze browser op dít apparaat — niet in een account. Op een
+        andere computer, browser of na het wissen van je browsergegevens zijn ze niet beschikbaar.
+      </div>
     </div>
     <button class="btn-start" onclick="naarPartijkeuze()">▶ VOLGENDE</button>
     <div class="error-msg" id="start-error" style="text-align:center"></div>
@@ -367,8 +371,16 @@
         <div class="save-panel">
           <h4>Spel Opslaan</h4>
           <div style="font-size:11px;color:var(--dim);margin-bottom:10px;line-height:1.6">
-            Sla je voortgang op in een van de drie slots. Je kunt later op elk apparaat (met deze browser) doorgaan, 
-            of een nieuw spel starten als ander Kamerlid en zo meerdere partijen uitproberen.
+            Sla je voortgang op in een van de drie slots, of start een nieuw spel als ander Kamerlid om
+            meerdere partijen uit te proberen.
+          </div>
+          <div class="opslag-waarschuwing">
+            <!-- technical#3: de vorige tekst hier suggereerde ten onrechte dat -->
+            <!-- opslaan op "elk apparaat" beschikbaar zou zijn -- localStorage -->
+            <!-- is per browser/apparaat, niet gekoppeld aan een account. -->
+            ⚠ Let op: dit is lokale opslag in déze browser op dít apparaat, niet gekoppeld aan een account.
+            Op een ander apparaat of in een andere browser zie je deze opslagen niet, en na het wissen van je
+            browsergegevens ben je ze kwijt.
           </div>
           <div id="save-slots"></div>
           <div class="save-msg" id="save-msg"></div>
@@ -447,57 +459,66 @@
 <script>
 // ==================== DATA ====================
 
+// game-designer#1: `energie` (in stats hieronder) was voorheen voor alle 17
+// fracties uniform 10 -- een eenpersoonsfractie als Volt of Lid Keijzer had
+// zo dezelfde energiecapaciteit als D66 met 26 zetels en een navenant
+// grotere staf/fractieondersteuning. `energie` varieert nu net als de
+// andere stats per partij (grofweg gekoppeld aan het aantal zetels: meer
+// zetels/staf = hogere energiecapaciteit), van 6 (Volt/Keijzer) tot 12
+// (D66/VVD). Dit is de startwaarde ÉN het plafond voor de rest van het
+// spel (state.energieMax, gezet in initState) -- zie renderStats() en
+// nextWeek() waar dit plafond wordt gebruikt i.p.v. het oude, vaste 10.
 const PARTIES = [
   { id: 'D66',       name: 'D66',            seats: 26, color: '#00b0c8', coalition: true,
-    stats: { dossier: 35, loyaliteit: 28, populariteit: 32, media: 38, integriteit: 35, energie: 10 },
+    stats: { dossier: 35, loyaliteit: 28, populariteit: 32, media: 38, integriteit: 35, energie: 12 },
     desc: 'Progressief-liberaal. Pro-Europa, onderwijs, klimaat.' },
   { id: 'VVD',       name: 'VVD',            seats: 22, color: '#f4820f', coalition: true,
-    stats: { dossier: 38, loyaliteit: 32, populariteit: 30, media: 32, integriteit: 30, energie: 10 },
+    stats: { dossier: 38, loyaliteit: 32, populariteit: 30, media: 32, integriteit: 30, energie: 12 },
     desc: 'Liberaal-conservatief. Economie, veiligheid, ondernemerschap. Fractievoorzitter: Ruben Brekelmans.' },
   { id: 'GL-PvdA',   name: 'GroenLinks-PvdA',seats: 20, color: '#e63946', coalition: false,
-    stats: { dossier: 32, loyaliteit: 30, populariteit: 35, media: 32, integriteit: 38, energie: 10 },
+    stats: { dossier: 32, loyaliteit: 30, populariteit: 35, media: 32, integriteit: 38, energie: 11 },
     desc: 'Links-progressief. Klimaat, sociale zekerheid, gelijkheid. Oppositie.' },
   { id: 'CDA',       name: 'CDA',            seats: 18, color: '#4caf50', coalition: true,
-    stats: { dossier: 32, loyaliteit: 35, populariteit: 30, media: 30, integriteit: 32, energie: 10 },
+    stats: { dossier: 32, loyaliteit: 35, populariteit: 30, media: 30, integriteit: 32, energie: 11 },
     desc: 'Christendemocratisch. Gezin, gemeenschap, middenweg.' },
   { id: 'JA21',      name: 'JA21',           seats: 9,  color: '#9c27b0', coalition: false,
-    stats: { dossier: 30, loyaliteit: 38, populariteit: 28, media: 28, integriteit: 28, energie: 10 },
+    stats: { dossier: 30, loyaliteit: 38, populariteit: 28, media: 28, integriteit: 28, energie: 9 },
     desc: 'Rechts-liberaal. Economische vrijheid, minder regelgeving.' },
   { id: 'FVD',       name: 'FVD',            seats: 7,  color: '#795548', coalition: false,
-    stats: { dossier: 30, loyaliteit: 35, populariteit: 30, media: 30, integriteit: 30,  energie: 10 },
+    stats: { dossier: 30, loyaliteit: 35, populariteit: 30, media: 30, integriteit: 30,  energie: 9 },
     desc: 'Nationaal-conservatief. Soevereiniteit, EU-kritisch. Fractievoorzitter: Lidewij de Vos.' },
   { id: 'PVV',       name: 'PVV',            seats: 19, color: '#ff9800', coalition: false,
     stats: { dossier: 25, loyaliteit: 32, populariteit: 30, media: 32, integriteit: 22, energie: 10 },
     desc: 'Rechts-populistisch. Anti-migratie, veiligheid.' },
   { id: 'BBB',       name: 'BBB',            seats: 3,  color: '#8bc34a', coalition: false,
-    stats: { dossier: 28, loyaliteit: 32, populariteit: 30, media: 28, integriteit: 30, energie: 10 },
+    stats: { dossier: 28, loyaliteit: 32, populariteit: 30, media: 28, integriteit: 30, energie: 8 },
     desc: 'Agrarisch. Boerenbelangen, platteland, stikstof. Na vertrek Keijzer 3 zetels.' },
   { id: 'SP',        name: 'SP',             seats: 3,  color: '#f44336', coalition: false,
-    stats: { dossier: 30, loyaliteit: 35, populariteit: 32, media: 30, integriteit: 35, energie: 10 },
+    stats: { dossier: 30, loyaliteit: 35, populariteit: 32, media: 30, integriteit: 35, energie: 8 },
     desc: 'Socialistisch. Zorg, arbeidsrechten, gelijkheid.' },
   { id: 'CU',        name: 'ChristenUnie',   seats: 3,  color: '#3f51b5', coalition: false,
-    stats: { dossier: 30, loyaliteit: 35, populariteit: 28, media: 28, integriteit: 38, energie: 10 },
+    stats: { dossier: 30, loyaliteit: 35, populariteit: 28, media: 28, integriteit: 38, energie: 8 },
     desc: 'Christelijk-sociaal. Ethiek, zorg, duurzaamheid.' },
   { id: 'PvdD',      name: 'PvdD',           seats: 3,  color: '#009688', coalition: false,
-    stats: { dossier: 32, loyaliteit: 32, populariteit: 30, media: 30, integriteit: 38, energie: 10 },
+    stats: { dossier: 32, loyaliteit: 32, populariteit: 30, media: 30, integriteit: 38, energie: 8 },
     desc: 'Dierenwelzijn en natuur. Klimaat, veganisme.' },
   { id: 'SGP',       name: 'SGP',            seats: 3,  color: '#607d8b', coalition: false,
-    stats: { dossier: 32, loyaliteit: 40, populariteit: 25, media: 25, integriteit: 38, energie: 10 },
+    stats: { dossier: 32, loyaliteit: 40, populariteit: 25, media: 25, integriteit: 38, energie: 8 },
     desc: 'Reformatorisch. Bijbelse normen, traditioneel.' },
   { id: 'DENK',      name: 'DENK',           seats: 3,  color: '#00bcd4', coalition: false,
-    stats: { dossier: 28, loyaliteit: 35, populariteit: 30, media: 32, integriteit: 30, energie: 10 },
+    stats: { dossier: 28, loyaliteit: 35, populariteit: 30, media: 32, integriteit: 30, energie: 8 },
     desc: 'Multicultureel. Gelijkheid, anti-discriminatie.' },
   { id: '50PLUS',    name: '50PLUS',         seats: 2,  color: '#ff5722', coalition: false,
-    stats: { dossier: 28, loyaliteit: 32, populariteit: 30, media: 28, integriteit: 32, energie: 10 },
+    stats: { dossier: 28, loyaliteit: 32, populariteit: 30, media: 28, integriteit: 32, energie: 7 },
     desc: 'Senioren. AOW, zorg, pensioenen.' },
   { id: 'Markuszower',name: 'Groep Markuszower', seats: 7,  color: '#e91e63', coalition: false,
-    stats: { dossier: 30, loyaliteit: 35, populariteit: 30, media: 30, integriteit: 28, energie: 10 },
+    stats: { dossier: 30, loyaliteit: 35, populariteit: 30, media: 30, integriteit: 28, energie: 8 },
     desc: 'Afsplitsing PVV (jan. 2026). Rechts, kritisch op Wilders koers. 7 zetels.' },
   { id: 'Keijzer',    name: 'Lid Keijzer',     seats: 1,  color: '#cddc39', coalition: false,
-    stats: { dossier: 32, loyaliteit: 20, populariteit: 32, media: 35, integriteit: 35, energie: 10 },
+    stats: { dossier: 32, loyaliteit: 20, populariteit: 32, media: 35, integriteit: 35, energie: 6 },
     desc: 'Mona Keijzer, vertrok feb. 2026 uit BBB. Zelfstandig Kamerlid. Centrumrechts.' },
   { id: 'Volt',      name: 'Volt',           seats: 1,  color: '#7b1fa2', coalition: false,
-    stats: { dossier: 32, loyaliteit: 30, populariteit: 30, media: 32, integriteit: 35, energie: 10 },
+    stats: { dossier: 32, loyaliteit: 30, populariteit: 30, media: 32, integriteit: 35, energie: 6 },
     desc: 'Pan-Europees progressief. EU, klimaat, democratie.' },
 ];
 
@@ -664,6 +685,10 @@ function initState(party, name, theme, apiKey) {
     name, party, theme, apiKey,
     week: 1,
     stats: { ...p.stats },
+    // game-designer#1: plafond voor energie, per partij (zie PARTIES
+    // hierboven). Vastgelegd bij aanvang, want state.stats.energie zelf
+    // daalt/herstelt gedurende het spel en kan dus niet als "max" dienen.
+    energieMax: p.stats.energie,
     decisions: [],
     motieVotes: {},
     motieUitkomsten: {},
@@ -672,6 +697,11 @@ function initState(party, name, theme, apiKey) {
     moties: [],
     fractieApproval: 75,
     eigenMotieUnlocked: false,
+    // game-designer#3: telt aaneengesloten weken onder de vertrouwens-
+    // grens, en of de fractie het vertrouwen definitief heeft opgezegd —
+    // zie pasFractieGevolgToe() in nextWeek().
+    weekenOnderVertrouwensgrens: 0,
+    fractieVertrouwenGebroken: false,
     peiling: null,
     peilingHistorie: [],
     agendaDone: { debat: false, overleg: false, media: false, werkbezoek: false, werkbezoekKeuze: '' },
@@ -744,12 +774,15 @@ function renderStats() {
     </div>`;
   }).join('');
 
-  // energie
+  // energie — plafond varieert nu per partij (game-designer#1), met een
+  // fallback op 10 voor oude saves van vóór deze wijziging die nog geen
+  // energieMax hebben.
   const e = state.stats.energie;
-  const epct = Math.round(e / 10 * 100);
+  const eMax = state.energieMax || 10;
+  const epct = Math.round(e / eMax * 100);
   document.getElementById('energie-fill').style.width = epct + '%';
-  document.getElementById('energie-fill').style.background = e <= 3 ? 'var(--red)' : 'var(--green)';
-  document.getElementById('energie-val').textContent = e + '/10';
+  document.getElementById('energie-fill').style.background = e <= eMax * 0.3 ? 'var(--red)' : 'var(--green)';
+  document.getElementById('energie-val').textContent = e + '/' + eMax;
 }
 
 function renderTopbar() {
@@ -1015,8 +1048,20 @@ function renderFractie() {
     fractieWaarschuwing = `✗ Je positie in de fractie staat onder druk — herhaaldelijk afwijken van de fractielijn kost goedkeuring. Kies bewust vaker voor opties die ${steunActie}, ook al kan dat spanning geven met je integriteit.`;
   }
 
+  // game-designer#3: dit is nu een ECHT, blijvend gevolg (zie
+  // pasFractieGevolgToe in nextWeek), geen cosmetische tekst meer --
+  // daarom prominent boven de gebruikelijke goedkeuringsbalk, en blijft
+  // zichtbaar ook als de goedkeuring zich daarna herstelt.
+  const vertrouwenGebrokenHTML = state.fractieVertrouwenGebroken ? `
+    <div style="margin-bottom:10px;padding:8px;border:1px solid var(--red-dim);background:rgba(232,74,74,0.08);font-size:11px;color:var(--red);line-height:1.6">
+      ✗✗ <strong>Je fractie heeft het vertrouwen in je definitief opgezegd</strong> — na aanhoudend lage
+      goedkeuring ben je buitenspel gezet. Je kunt deze zittingsperiode geen eigen motie meer indienen,
+      ook niet als je dossierkennis/integriteit daar later weer voor in aanmerking zouden komen.
+    </div>` : '';
+
   document.getElementById('fractie-verwachting').innerHTML =
     `<div style="font-size:12px; color:var(--white); line-height:1.7">
+      ${vertrouwenGebrokenHTML}
       <span class="c-dim">Fractie-goedkeuring:</span>
       <div class="stat-row" style="margin-top:6px">
         <div class="stat-bar" style="flex:1">
@@ -1653,12 +1698,23 @@ async function startGame() {
 
   try {
     const party = PARTIES.find(p => p.id === selectedParty);
+    // Bugfix: het zetelaantal van de partij van de speler stond hier niet
+    // bij, waardoor de AI dat getal moest verzinnen -- dat leverde soms
+    // een fout aantal op (bijv. "CDA behield 12 zetels" terwijl CDA 18
+    // zetels heeft, zie PARTIES hierboven). Nu wordt het echte aantal
+    // expliciet meegegeven, met een instructie om geen andere getallen te
+    // verzinnen.
     const article = await callClaude([{
       role: 'user',
-      content: `Schrijf een kort krantenartikel (max 120 woorden) over het nieuwe Kamerlid ${name} van ${party.name}, 
-      gespecialiseerd in ${theme}. Schrijf in de stijl van een Nederlandse krant. Gebruik een passende kop en 
-      een positieve maar journalistieke toon. Schrijf alsof het 12 november 2025 is, de dag van de installatie 
-      van de nieuwe Tweede Kamer na de verkiezingen van 29 oktober 2025 waarbij D66 en PVV beide 26 zetels kregen.`
+      content: `Schrijf een kort krantenartikel (max 120 woorden) over het nieuwe Kamerlid ${name} van ${party.name},
+      gespecialiseerd in ${theme}. Schrijf in de stijl van een Nederlandse krant. Gebruik een passende kop en
+      een positieve maar journalistieke toon. Schrijf alsof het 12 november 2025 is, de dag van de installatie
+      van de nieuwe Tweede Kamer na de verkiezingen van 29 oktober 2025.
+
+Feitelijke gegevens (gebruik ALLEEN deze getallen als je zetelaantallen noemt -- verzin er geen andere bij, en noem er geen als ze niet nodig zijn voor het artikel):
+- ${party.name} behaalde ${party.seats} ${party.seats === 1 ? 'zetel' : 'zetels'}.
+- D66 en PVV werden bij de verkiezingen gezamenlijk de grootste partij, met elk 26 zetels.
+- De Tweede Kamer telt in totaal 150 zetels.`
     }],
     'Je bent een Nederlandse politiek journalist. Schrijf alleen het artikel, geen uitleg of meta-tekst. Geen markdown.', 500, 'welkomstartikel');
 
@@ -2283,8 +2339,9 @@ uitleg is een educatieve toelichting van max 2 zinnen voor middelbare scholieren
     // Energie cost
     state.stats.energie = Math.max(0, state.stats.energie - 1);
 
-    // Unlock eigen motie
-    if (state.stats.integriteit >= 16 && state.stats.loyaliteit <= 12) {
+    // Unlock eigen motie -- geblokkeerd als de fractie het vertrouwen al
+    // definitief heeft opgezegd (game-designer#3, zie pasFractieGevolgToe).
+    if (state.stats.integriteit >= 16 && state.stats.loyaliteit <= 12 && !state.fractieVertrouwenGebroken) {
       state.eigenMotieUnlocked = true;
     }
 
@@ -2440,6 +2497,39 @@ Antwoord ALLEEN als geldige JSON zonder markdown:
   hideLoading();
 }
 
+// game-designer#3: tot nu toe was aanhoudend lage fractie-goedkeuring
+// puur cosmetisch -- alleen een waarschuwingstekst op het Fractie-
+// tabblad (player-experience#5), zonder dat het spel er ooit iets mee
+// deed. Dit geeft er een echt, oplopend gevolg aan:
+//  - onder 30%: kleine wekelijkse imagoschade (populariteit/media -1),
+//    zolang het aanhoudt -- "gedoe in de fractie" kost aandacht.
+//  - 3 aaneengesloten weken onder 20%: eenmalige, BLIJVENDE consequentie
+//    (state.fractieVertrouwenGebroken): de fractie zet je buitenspel,
+//    je kunt voor de rest van de zittingsperiode geen eigen motie meer
+//    indienen (zie de unlock-guard in makeChoice hieronder), plus een
+//    directe populariteitsklap. Dit is onomkeerbaar, net als in de
+//    praktijk een royement niet ongedaan wordt gemaakt door daarna wel
+//    weer trouw te stemmen.
+function pasFractieGevolgToe() {
+  if (state.fractieApproval < 30) {
+    state.stats.populariteit = Math.max(0, state.stats.populariteit - 1);
+    state.stats.media = Math.max(0, state.stats.media - 1);
+  }
+
+  if (state.fractieApproval < 20) {
+    state.weekenOnderVertrouwensgrens = (state.weekenOnderVertrouwensgrens || 0) + 1;
+  } else {
+    state.weekenOnderVertrouwensgrens = 0;
+  }
+
+  if (state.weekenOnderVertrouwensgrens >= 3 && !state.fractieVertrouwenGebroken) {
+    state.fractieVertrouwenGebroken = true;
+    state.eigenMotieUnlocked = false;
+    state.stats.populariteit = Math.max(0, state.stats.populariteit - 5);
+    state.newsItems.unshift('Fractie zet Kamerlid buitenspel na aanhoudend laag vertrouwen');
+  }
+}
+
 async function nextWeek() {
   state.week++;
   if (state.week > 12) {
@@ -2447,9 +2537,13 @@ async function nextWeek() {
     await endGame();
     return;
   }
-  state.stats.energie = Math.min(10, state.stats.energie + 3); // recharge
+  // Plafond varieert nu per partij (game-designer#1) i.p.v. het oude,
+  // vaste 10 — fallback voor oude saves van vóór deze wijziging.
+  state.stats.energie = Math.min(state.energieMax || 10, state.stats.energie + 3); // recharge
+  pasFractieGevolgToe();
   renderTopbar();
   renderStats();
+  renderFractie();
   // Toon loading placeholder in agenda zodat speler niet op stale items klikt
   const agendaLoadingEl = document.getElementById('agenda-list');
   if (agendaLoadingEl) agendaLoadingEl.innerHTML = '<div style="padding:20px;color:var(--dim);font-size:12px;text-align:center">⏳ Volgende week wordt geladen...</div>';
