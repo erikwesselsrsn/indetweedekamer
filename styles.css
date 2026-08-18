@@ -256,7 +256,10 @@
   }
 
   /* ===== INTRO SCREEN ===== */
-  #intro-screen {
+  /* #formatie-screen (scenario#3, eenmalig formatie-dilemma) deelt dezelfde
+     basisopmaak als #intro-screen. */
+  #intro-screen,
+  #formatie-screen {
     align-items: center;
     justify-content: center;
     padding: 30px;
@@ -823,6 +826,17 @@
   .vote-result.tegen { color: var(--red); border: 1px solid var(--red-dim); }
   .vote-result.onthouding { color: var(--dim); border: 1px solid var(--border); }
 
+  /* Risico/beloning-uitkomst bij afwijken van de coalitielijn (game-designer#5) */
+  .afwijk-uitkomst {
+    margin-top: 6px;
+    padding: 8px;
+    border: 1px solid var(--yellow-dim);
+    background: rgba(232,200,74,0.06);
+    font-size: 11px;
+    color: var(--white);
+    line-height: 1.6;
+  }
+
   /* Debat screen */
   .debat-log {
     background: var(--bg);
@@ -1162,6 +1176,27 @@
   .reflectie-box .reflectie-text {
     color: var(--white);
     font-style: italic;
+  }
+
+  /* Uitgebreide reflectieset op het eindscherm (educatief#4) */
+  .eindreflectie-list {
+    list-style: none;
+    color: var(--white);
+    font-style: italic;
+  }
+
+  .eindreflectie-list li {
+    margin-top: 6px;
+    padding-left: 14px;
+    position: relative;
+  }
+
+  .eindreflectie-list li::before {
+    content: '?';
+    position: absolute;
+    left: 0;
+    color: var(--yellow);
+    font-style: normal;
   }
 
   .modal-question {

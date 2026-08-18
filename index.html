@@ -197,9 +197,26 @@
     <div class="intro-body" id="intro-body">
       <span class="loading">Artikel wordt geladen...</span>
     </div>
-    <button class="btn-continue" id="btn-intro-continue" onclick="showGame()" disabled>
+    <button class="btn-continue" id="btn-intro-continue" onclick="naarFormatieDilemma()" disabled>
       ▶ BEGIN EERSTE WERKWEEK
     </button>
+  </div>
+</div>
+
+<!-- FORMATIE-DILEMMA (scenario#3): eenmalig, handgeschreven dilemma dat
+     aansluit op het verkiezingsscherm/de kabinetsformatie, vóór de eerste
+     speelweek begint. Geen AI-call -- vaste tekst per coalitie/oppositie. -->
+<div class="screen" id="formatie-screen">
+  <div class="intro-panel">
+    <div class="intro-header">
+      <span class="paper-name">KABINETSFORMATIE</span>
+      <span class="date">12 november 2025</span>
+    </div>
+    <div class="intro-body">
+      <div class="dilemma-context" id="formatie-context"></div>
+      <div class="dilemma-text" id="formatie-vraag"></div>
+      <div class="choices" id="formatie-choices"></div>
+    </div>
   </div>
 </div>
 
@@ -421,6 +438,7 @@
       <div class="final-text" id="final-text">Laden...</div>
       <div class="stats-summary" id="end-stats"></div>
       <div class="final-text" id="end-newspaper" style="font-family:'Space Grotesk',sans-serif; font-size:16px; color:var(--yellow)">Laden...</div>
+      <div id="end-reflectie"></div>
       <button class="btn-restart" onclick="restartGame()">↺ OPNIEUW SPELEN</button>
     </div>
   </div>
@@ -648,6 +666,7 @@ function initState(party, name, theme, apiKey) {
     stats: { ...p.stats },
     decisions: [],
     motieVotes: {},
+    motieUitkomsten: {},
     pendingDilemma: null,
     dilemmaAnswered: false,
     moties: [],
@@ -1130,7 +1149,12 @@ function renderMoties() {
           ${m.desc && !m.overwegende ? `<div class="dictum-block">${escapeHtml(m.desc)}</div>` : ''}
         </div>
         ${voted
-          ? `<div class="vote-result ${voted}">✓ Jij stemde: ${voted.toUpperCase()}</div>`
+          ? `<div class="vote-result ${voted}">✓ Jij stemde: ${voted.toUpperCase()}</div>
+             ${(state.motieUitkomsten && state.motieUitkomsten[i]) ? `
+               <div class="afwijk-uitkomst">
+                 🎲 <strong>${escapeHtml(state.motieUitkomsten[i].label)}</strong> — ${escapeHtml(state.motieUitkomsten[i].toelichting)}
+                 <div class="wbopt-effecten">${formatEffectenBadges(state.motieUitkomsten[i].effecten)}</div>
+               </div>` : ''}`
           : `<div class="vote-btns">
               <button class="vote-btn voor" onclick="voteMotieChoice(${i},'voor')">VOOR</button>
               <button class="vote-btn tegen" onclick="voteMotieChoice(${i},'tegen')">TEGEN</button>
@@ -1648,6 +1672,92 @@ async function startGame() {
   hideLoading();
 }
 
+// Eenmalig handgeschreven dilemma over de kabinetsformatie (scenario#3),
+// vóór de eerste speelweek. Bewust GEEN AI-call: dit moment is voor elke
+// speler van dezelfde coalitie/oppositie-positie identiek en feitelijk
+// verankerd (de formatie van kabinet-Jetten, zie het verkiezingsscherm),
+// dus AI-generatie zou hier geen meerwaarde hebben tegenover extra kosten.
+// Twee varianten (coalitie/oppositie) i.p.v. één per partij: de kern van
+// het dilemma is de coalitie/oppositie-positie, niet de individuele partij.
+const FORMATIE_DILEMMA = {
+  coalitie: {
+    context: 'Na zes weken informateur-gesprekken hebben D66, VVD en CDA een coalitieakkoord gesloten — een minderheidskabinet met 66 van de 150 zetels. Niet elk onderdeel van het akkoord is waar jouw fractie voluit voor stond; compromissen waren nodig om er samen uit te komen.',
+    vraag: 'Op je eerste dag als Kamerlid vraagt een journalist hoe jij tegenover het coalitieakkoord staat. Wat zeg je?',
+    keuzes: [
+      { tekst: 'Ik sta volledig achter het akkoord — een coalitie werkt alleen als je elkaar niet publiekelijk afvalt.',
+        effecten: { loyaliteit: 4, integriteit: -2 },
+        gevolg: 'Je fractieleider is opgelucht met je eenduidige steun. Sommige kiezers vragen zich af of je wel kritisch genoeg bent.' },
+      { tekst: 'Ik steun het akkoord als geheel, maar ben eerlijk dat niet elk onderdeel mijn eerste voorkeur was.',
+        effecten: { loyaliteit: 1, integriteit: 2, populariteit: 1 },
+        gevolg: 'Je genuanceerde antwoord valt op als volwassen, zonder de coalitie in gevaar te brengen.' },
+      { tekst: 'Ik ben kritisch: op een paar punten had ik gehoopt op meer van mijn partij.',
+        effecten: { loyaliteit: -4, integriteit: 3, media: 2 },
+        gevolg: 'Je opmerking haalt de media als "onrust in de coalitie" — je fractieleider belt je nog dezelfde avond.' },
+    ],
+  },
+  oppositie: {
+    context: 'Na zes weken informateur-gesprekken hebben D66, VVD en CDA een coalitieakkoord gesloten — een minderheidskabinet met 66 van de 150 zetels. Een minderheidskabinet heeft op veel dossiers steun van andere fracties nodig om wetten door de Kamer te krijgen, dus ook jouw opstelling als oppositielid doet er meteen toe.',
+    vraag: 'Op je eerste dag als Kamerlid vraagt een journalist hoe jouw fractie zich gaat opstellen tegenover dit minderheidskabinet. Wat zeg je?',
+    keuzes: [
+      { tekst: 'Constructieve oppositie: waar het kabinetsbeleid goed is voor Nederland, steunen we het, ook al zitten we er niet in.',
+        effecten: { populariteit: 2, integriteit: 1, loyaliteit: -1 },
+        gevolg: 'Je toon wordt gewaardeerd als volwassen, maar een deel van je eigen achterban had liever meteen scherpere taal gehoord.' },
+      { tekst: 'Scherpe oppositie vanaf dag één: dit kabinet heeft geen meerderheid en dus geen sterk mandaat.',
+        effecten: { loyaliteit: 3, media: 2, populariteit: -1 },
+        gevolg: 'Je uitspraak wordt goed ontvangen binnen je fractie en levert meteen media-aandacht op.' },
+      { tekst: 'Ik wacht liever concrete plannen af voordat ik een oordeel geef.',
+        effecten: { dossier: 2, media: -2 },
+        gevolg: 'Je voorzichtige antwoord oogt verstandig, maar levert weinig aandacht op — de camera\'s gaan naar een collega met een stelliger uitspraak.' },
+    ],
+  },
+};
+
+function naarFormatieDilemma() {
+  const btn = document.getElementById('btn-intro-continue');
+  if (btn) btn.disabled = true;
+
+  const party = PARTIES.find(p => p.id === state.party);
+  const variant = party && party.coalition ? FORMATIE_DILEMMA.coalitie : FORMATIE_DILEMMA.oppositie;
+
+  document.getElementById('formatie-context').textContent = variant.context;
+  document.getElementById('formatie-vraag').textContent = variant.vraag;
+  const letters = ['A', 'B', 'C'];
+  document.getElementById('formatie-choices').innerHTML = variant.keuzes.map((k, i) => `
+    <button class="choice-btn" onclick="kiesFormatieDilemma(${i})">
+      <span class="choice-letter">${letters[i]}</span>
+      <span class="choice-text">${escapeHtml(k.tekst)}</span>
+    </button>`).join('');
+
+  showScreen('formatie-screen');
+}
+
+function kiesFormatieDilemma(idx) {
+  const party = PARTIES.find(p => p.id === state.party);
+  const variant = party && party.coalition ? FORMATIE_DILEMMA.coalitie : FORMATIE_DILEMMA.oppositie;
+  const keuze = variant.keuzes[idx];
+  if (!keuze) return;
+
+  const changes = [];
+  Object.entries(keuze.effecten).forEach(([key, val]) => {
+    if (key in state.stats) {
+      state.stats[key] = Math.max(0, Math.min(100, state.stats[key] + val));
+      changes.push({ key: STAT_LABELS[key], val });
+    }
+  });
+
+  state.decisions.push({ week: 0, text: keuze.tekst });
+  state.newsItems.unshift('Kamerlid reageert op coalitieakkoord');
+
+  document.getElementById('formatie-choices').innerHTML = `
+    <div class="result-box">
+      <div class="result-text">${escapeHtml(keuze.gevolg)}</div>
+      <div class="stat-changes">
+        ${changes.map(c => `<span class="stat-change ${c.val > 0 ? 'pos' : 'neg'}">${c.key}: ${c.val > 0 ? '+' : ''}${c.val}</span>`).join('')}
+      </div>
+    </div>
+    <button class="btn-continue" style="margin:12px 0 0" onclick="showGame()">▶ BEGIN EERSTE WERKWEEK</button>`;
+}
+
 function showGame() {
   // Guard against double-click
   const btn = document.getElementById('btn-intro-continue');
@@ -1852,6 +1962,51 @@ const REFLECTIEVRAGEN = [
 
 function pickReflectievraag() {
   return REFLECTIEVRAGEN[Math.floor(Math.random() * REFLECTIEVRAGEN.length)];
+}
+
+// Uitgebreidere reflectieset bij het eindrapport (educatief#4): de
+// per-dilemma reflectievraag hierboven is bewust kort en losstaand; hier,
+// aan het eind van de volledige zittingsperiode, past een set die
+// terugkijkt op het GEHEEL (patronen over 12 weken), niet op één keuze.
+// Ook dit is statisch (geen AI-call, geen extra tokenkosten) -- vergelijk
+// de reflectievragen per lesblok in kamerlid-docentenhandleiding.md, die
+// voor klassikaal gebruik zijn; dit is de individuele variant direct na
+// het spelen.
+const EINDREFLECTIEVRAGEN = [
+  'Was er een patroon in wanneer je koos vóór je fractie en wanneer vóór je eigen overtuiging?',
+  'Welke van je keuzes zou je, achteraf gezien, anders maken? Waarom?',
+  'Vond je het lastiger om trouw te blijven aan je fractie, of aan je eigen overtuiging over jouw thema?',
+  'Zou een ander Kamerlid met dezelfde partij en hetzelfde thema een heel andere zittingsperiode hebben gehad, denk je?',
+  'Wat zegt de peiling (of het uitblijven van een uitschieter) over hoe kiezers politici beoordelen — op inhoud, op imago, of op iets anders?',
+  'Als je zelf zou stemmen: zou je op een Kamerlid zoals jij stemmen? Waarom (niet)?',
+  'Welk moment uit je zittingsperiode zou je, als journalist, als de belangrijkste kop van het jaar kiezen?',
+  'Heeft dit spel je beeld van het Kamerlidmaatschap veranderd — en zo ja, hoe?',
+];
+
+// Kiest 4 van de 8 vragen (willekeurig, zonder herhaling) zodat het
+// eindscherm bij elke playthrough net iets anders is, zonder dat de
+// speler alle 8 tegelijk hoeft te lezen.
+function pickEindreflectievragen() {
+  const gekopieerd = [...EINDREFLECTIEVRAGEN];
+  const gekozen = [];
+  for (let i = 0; i < 4 && gekopieerd.length; i++) {
+    const idx = Math.floor(Math.random() * gekopieerd.length);
+    gekozen.push(gekopieerd.splice(idx, 1)[0]);
+  }
+  return gekozen;
+}
+
+function renderEindReflectie() {
+  const el = document.getElementById('end-reflectie');
+  if (!el) return;
+  const vragen = pickEindreflectievragen();
+  el.innerHTML = `
+    <div class="reflectie-box" style="margin-top:14px;text-align:left">
+      <div class="reflectie-title">🎓 Kijk terug op je zittingsperiode</div>
+      <ul class="eindreflectie-list">
+        ${vragen.map(v => `<li>${escapeHtml(v)}</li>`).join('')}
+      </ul>
+    </div>`;
 }
 
 // ==================== PREFETCH ====================
@@ -2189,17 +2344,47 @@ uitleg is een educatieve toelichting van max 2 zinnen voor middelbare scholieren
   hideLoading();
 }
 
+// Risico/beloning bij een coalitielid dat tegen een motie stemt
+// (game-designer#5): voorheen was dit een zuiver binaire schakelaar
+// (altijd loyaliteit -2 / integriteit +2). In werkelijkheid is "afwijken
+// van de coalitie" geen gegarandeerd effect: het kan als moedig worden
+// gezien, of als onbetrouwbaar. Dit voegt die onzekerheid toe zonder een
+// AI-call (dus geen extra tokenkosten) -- puur een gewogen dobbelsteen:
+//  65% normaal resultaat (de oude, voorspelbare uitkomst)
+//  20% "gewaardeerd risico": kleinere loyaliteitsklap, extra integriteit
+//      én een beetje populariteit (de media prijst standvastigheid)
+//  15% "afgestraft": extra harde loyaliteitsklap én wat populariteit
+//      kwijt (weggezet als onbetrouwbaar/verdeeldheid binnen de coalitie)
+function bepaalAfwijkUitkomst() {
+  const r = Math.random();
+  if (r < 0.20) {
+    return { label: 'Gewaardeerd risico', effecten: { loyaliteit: -1, integriteit: 3, populariteit: 1 },
+      toelichting: 'Je afwijkende stem wordt in de media uitgelegd als principieel — dat betaalt zich uit.' };
+  }
+  if (r < 0.35) {
+    return { label: 'Afgestraft', effecten: { loyaliteit: -4, populariteit: -1 },
+      toelichting: 'Je afwijkende stem wordt gezien als verdeeldheid zaaien binnen de coalitie.' };
+  }
+  return { label: null, effecten: { loyaliteit: -2, integriteit: 2 }, toelichting: '' };
+}
+
 function voteMotieChoice(idx, choice) {
   state.motieVotes[idx] = choice;
+  if (!state.motieUitkomsten) state.motieUitkomsten = {};
 
-  // Stat effects — schaal 0-100, kleine verschuivingen per motie (max ±2)
+  // Stat effects — schaal 0-100, kleine verschuivingen per motie (max ±2,
+  // behalve bij de risico/beloning-uitkomsten hierboven, die iets groter
+  // mogen zijn omdat ze zeldzamer zijn).
   const party = PARTIES.find(p => p.id === state.party);
   if (party.coalition) {
     if (choice === 'voor') {
       state.stats.loyaliteit = Math.min(100, state.stats.loyaliteit + 2);
     } else if (choice === 'tegen') {
-      state.stats.loyaliteit = Math.max(0, state.stats.loyaliteit - 2);
-      state.stats.integriteit = Math.min(100, state.stats.integriteit + 2);
+      const uitkomst = bepaalAfwijkUitkomst();
+      Object.entries(uitkomst.effecten).forEach(([key, val]) => {
+        if (key in state.stats) state.stats[key] = Math.max(0, Math.min(100, state.stats[key] + val));
+      });
+      if (uitkomst.label) state.motieUitkomsten[idx] = uitkomst;
     }
     // onthouding: geen effect
   } else {
@@ -2542,6 +2727,21 @@ const MEDIA_POOL = [
       { letter: 'B', tekst: 'Je belooft vol zelfvertrouwen dat het zeker gaat lukken.', effecten: { dossier: 0, media: 2, populariteit: 2, loyaliteit: 0, integriteit: -2 }, uitleg: 'Overbeloftes scoren kort maar schaden je geloofwaardigheid later.' },
       { letter: 'C', tekst: 'Je draait de vraag om en vraagt de interviewer wat hij zou doen.', effecten: { dossier: 0, media: 1, populariteit: 1, loyaliteit: 0, integriteit: -1 }, uitleg: 'Vragen omdraaien wordt ook als ontwijken gezien.' },
     ]
+  },
+  {
+    // scenario#5: internationale framing -- de eerdere media-varianten
+    // waren allemaal binnenlands (Kamer, Nederlandse pers). Dit dossier
+    // heeft ook een EU-dimensie, wat past bij hoe Kamerleden op EU-relevante
+    // thema's ook internationaal zichtbaar worden.
+    uitleg_type: 'Persmoment',
+    uitleg_beschrijving: 'Nederlands beleid staat niet los van Europa — buitenlandse pers en Europarlementariërs volgen dossiers met een EU-dimensie ook.',
+    intro: (theme) => `Een correspondent van Politico Europe belt je voor een reactie op het Nederlandse beleid rond ${theme}, in vergelijking met andere EU-lidstaten. Ook je eigen Europarlementariër-collega heeft er al iets over gezegd.`,
+    vraag: (theme) => `"Loopt Nederland voorop of juist achter in Europa als het gaat om ${theme}?"`,
+    keuzes: [
+      { letter: 'A', tekst: 'Je benadrukt dat Nederland een voorbeeldrol wil spelen binnen de EU en verwijst naar Europese samenwerking.', effecten: { dossier: 1, media: 2, populariteit: 1, loyaliteit: 0, integriteit: 1 }, uitleg: 'Een internationale profilering vergroot je aanzien, maar vraagt kennis van EU-verhoudingen.' },
+      { letter: 'B', tekst: 'Je bent kritisch: Nederland loopt op dit dossier juist achter bij buurlanden, en dat mag gezegd worden — ook al ligt dat gevoelig bij het kabinet.', effecten: { dossier: 2, media: 2, populariteit: 0, loyaliteit: -2, integriteit: 2 }, uitleg: 'Zelfkritiek op het internationale toneel kan als moedig gelden, maar schuurt met de coalitielijn.' },
+      { letter: 'C', tekst: 'Je houdt het diplomatiek: "Elk land heeft zijn eigen aanpak, vergelijken is niet altijd eerlijk."', effecten: { dossier: 0, media: -1, populariteit: 0, loyaliteit: 1, integriteit: 0 }, uitleg: 'Diplomatieke antwoorden zijn veilig maar leveren weinig internationale zichtbaarheid op.' },
+    ]
   }
 ];
 
@@ -2837,6 +3037,10 @@ async function endGame() {
   document.getElementById('end-verdict').textContent = oordeel;
   document.getElementById('end-verdict').style.color =
     score >= 80 ? 'var(--green)' : score >= 70 ? 'var(--teal)' : score >= 55 ? 'var(--yellow)' : 'var(--red)';
+
+  // Uitgebreidere reflectieset (educatief#4): geen AI-call, dus meteen
+  // beschikbaar, ongeacht of het eindverslag hieronder lukt.
+  renderEindReflectie();
 
   // Stats samenvatting
   document.getElementById('end-stats').innerHTML = Object.entries(STAT_LABELS).map(([k, l]) =>
