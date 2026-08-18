@@ -658,6 +658,39 @@ const WEEK_MONTHS = [
   'maart 2026','maart 2026','april 2026','april 2026'
 ];
 
+// Ontworpen spanningscurve over de 12 weken (game-designer#4): drie
+// fasen die ONAFHANKELIJK van wat de AI toevallig genereert bepalen hoe
+// zwaar dilemma-keuzes doortellen. In code afgedwongen (zie de schaling
+// in makeChoice), niet alleen als prompt-hint -- zo is de curve
+// gegarandeerd, ook bij fallback-dilemma's of een afwijkende AI-respons.
+//  - Week 1-3  "Inwerkperiode": effecten tellen lichter mee (×0.75).
+//    Nieuwe Kamerleden krijgen ruimte om het spel te leren zonder dat
+//    een vroege misstap de hele zittingsperiode bepaalt.
+//  - Week 4-8  "Volle agenda": normale zwaarte (×1.0).
+//  - Week 9-12 "Eindsprint": effecten tellen zwaarder mee (×1.25) --
+//    richting het eindrapport staat er meer op het spel.
+const WEEK_FASEN = [
+  { vanaf: 9, naam: 'Eindsprint',    factor: 1.25,
+    uitleg: 'Eindsprint (week 9-12): het politieke seizoen loopt op zijn eind — keuzes tellen nu zwaarder mee in je statistieken.' },
+  { vanaf: 4, naam: 'Volle agenda',  factor: 1.0,
+    uitleg: '' },
+  { vanaf: 1, naam: 'Inwerkperiode', factor: 0.75,
+    uitleg: 'Inwerkperiode (week 1-3): je bent net begonnen — keuzes tellen iets lichter mee, zodat een vroege misstap niet meteen je hele zittingsperiode bepaalt.' },
+];
+
+function getWeekFase(week) {
+  return WEEK_FASEN.find(f => week >= f.vanaf) || WEEK_FASEN[WEEK_FASEN.length - 1];
+}
+
+// Past de fase-factor toe op één stat-verandering. Behoudt het teken,
+// rondt af, en zorgt dat een bedoeld effect nooit naar 0 wordt
+// weggedempt (minimaal ±1 als de AI ±1 of meer bedoelde).
+function schaalEffect(val, factor) {
+  if (!val) return 0;
+  const geschaald = Math.round(Math.abs(val) * factor);
+  return Math.sign(val) * Math.max(1, geschaald);
+}
+
 // ==================== STATE ====================
 
 let state = {};
@@ -698,10 +731,13 @@ function initState(party, name, theme, apiKey) {
     fractieApproval: 75,
     eigenMotieUnlocked: false,
     // game-designer#3: telt aaneengesloten weken onder de vertrouwens-
-    // grens, en of de fractie het vertrouwen definitief heeft opgezegd —
-    // zie pasFractieGevolgToe() in nextWeek().
+    // grens, en of de fractie je werk (tijdelijk) heeft beperkt — zie
+    // pasFractieGevolgToe() in nextWeek(). Sinds de Groep 6-aanpassing is
+    // de beperking HERSTELBAAR: wekenVertrouwenHerstel telt aaneengesloten
+    // weken met goedkeuring ≥ 60% terwijl de beperking actief is.
     weekenOnderVertrouwensgrens: 0,
     fractieVertrouwenGebroken: false,
+    wekenVertrouwenHerstel: 0,
     peiling: null,
     peilingHistorie: [],
     agendaDone: { debat: false, overleg: false, media: false, werkbezoek: false, werkbezoekKeuze: '' },
@@ -788,9 +824,18 @@ function renderStats() {
 function renderTopbar() {
   document.getElementById('tb-name').textContent = state.name; // textContent is safe
   document.getElementById('tb-party').textContent = state.party;
-  document.getElementById('tb-week').textContent = state.week + ' / 12';
   document.getElementById('tb-theme').textContent = state.theme;
-  document.getElementById('sb-week').textContent = 'Week ' + state.week;
+
+  // Spanningscurve (game-designer#4) zichtbaar maken: de actuele fase
+  // staat naast het weeknummer, met uitleg als tooltip. In een piekweek
+  // (game-designer#2) toont het label de piekweek-naam.
+  const fase = getWeekFase(state.week);
+  const pw = PIEKWEKEN[state.week];
+  const faseLabel = pw ? pw.icoon + ' ' + pw.naam : fase.naam;
+  const tbWeek = document.getElementById('tb-week');
+  tbWeek.textContent = state.week + ' / 12 · ' + faseLabel;
+  tbWeek.title = pw ? pw.banner : (fase.uitleg || 'Volle agenda (week 4-8): keuzes tellen normaal mee.');
+  document.getElementById('sb-week').textContent = 'Week ' + state.week + (pw ? ' · ' + pw.naam : '');
 
   // Voortgangsbalk richting het eindrapport (player-experience#3): de
   // herhaling van dezelfde vijf weekonderdelen kan rond week 8-10 sleur
@@ -951,10 +996,16 @@ function renderAgenda() {
   const mediaDone = state.agendaDone && state.agendaDone.media;
   const werkbezoekDone = state.agendaDone && state.agendaDone.werkbezoek;
   const overlegDone = !!(state.agendaDone && state.agendaDone.overleg);
+  // Piekweek (game-designer#2): het plenaire debat krijgt een afwijkende
+  // titel/planning (begrotingsbehandeling of spoeddebat) en boven de
+  // agenda verschijnt een piekweek-banner.
+  const pw = PIEKWEKEN[state.week];
+  const debatTitel = pw ? pw.agendaDebatTitel + state.theme : 'Plenair debat: ' + state.theme;
+  const debatMeta = pw ? pw.agendaDebatMeta : 'Dinsdag · Plenaire zaal';
   const items = [
     { dot: debatDone ? 'done' : 'urgent', type: 'DEBAT', done: debatDone,
-      title: debatDone ? 'Plenair debat: ' + state.theme + ' ✓' : 'Plenair debat: ' + state.theme,
-      meta: 'Dinsdag · Plenaire zaal' },
+      title: debatDone ? debatTitel + ' ✓' : debatTitel,
+      meta: debatMeta },
     { dot: state.agendaDone.overleg ? 'done' : 'normal', type: 'OVERLEG', done: !!state.agendaDone.overleg,
       title: state.agendaDone.overleg ? 'Commissievergadering ✓' : 'Commissievergadering ' + state.theme,
       meta: 'Woensdag · Commissiezaal' },
@@ -971,10 +1022,14 @@ function renderAgenda() {
 
   document.getElementById('agenda-badge').textContent = items.length + ' items';
   document.getElementById('agenda-week-title').textContent =
-    'Week ' + state.week + ' — ' + WEEK_MONTHS[state.week - 1];
+    'Week ' + state.week + ' — ' + WEEK_MONTHS[state.week - 1] + (pw ? ' · ' + pw.icoon + ' ' + pw.naam : '');
+
+  const piekweekBannerHTML = pw
+    ? `<div class="piekweek-banner">${pw.icoon} <strong>${escapeHtml(pw.naam.toUpperCase())}</strong> — ${escapeHtml(pw.banner)}</div>`
+    : '';
 
   const agendaEl = document.getElementById('agenda-list');
-  agendaEl.innerHTML = items.map((i) =>
+  agendaEl.innerHTML = piekweekBannerHTML + items.map((i) =>
     `<div class="agenda-item${i.type && !i.done ? ' agenda-clickable' : ''}" data-type="${i.type}">
       <div class="agenda-dot ${i.dot}"></div>
       <div class="agenda-info">
@@ -1054,9 +1109,11 @@ function renderFractie() {
   // zichtbaar ook als de goedkeuring zich daarna herstelt.
   const vertrouwenGebrokenHTML = state.fractieVertrouwenGebroken ? `
     <div style="margin-bottom:10px;padding:8px;border:1px solid var(--red-dim);background:rgba(232,74,74,0.08);font-size:11px;color:var(--red);line-height:1.6">
-      ✗✗ <strong>Je fractie heeft het vertrouwen in je definitief opgezegd</strong> — na aanhoudend lage
-      goedkeuring ben je buitenspel gezet. Je kunt deze zittingsperiode geen eigen motie meer indienen,
-      ook niet als je dossierkennis/integriteit daar later weer voor in aanmerking zouden komen.
+      ✗✗ <strong>De fractie heeft je werk als Kamerlid beperkt</strong> omdat je je niet aan de
+      spelregels van de fractie hebt gehouden. Je mag geen moties of amendementen meer namens de
+      fractie indienen, totdat je het vertrouwen weer hebt terugverdiend.
+      <span style="color:var(--dim)">Herstel: houd je fractie-goedkeuring twee weken achter elkaar
+      op 60% of hoger${state.wekenVertrouwenHerstel ? ` (nu ${state.wekenVertrouwenHerstel} van 2 weken)` : ''}.</span>
     </div>` : '';
 
   document.getElementById('fractie-verwachting').innerHTML =
@@ -1735,6 +1792,145 @@ Feitelijke gegevens (gebruik ALLEEN deze getallen als je zetelaantallen noemt --
 // dus AI-generatie zou hier geen meerwaarde hebben tegenover extra kosten.
 // Twee varianten (coalitie/oppositie) i.p.v. één per partij: de kern van
 // het dilemma is de coalitie/oppositie-positie, niet de individuele partij.
+// Piekweken met afwijkende structuur (game-designer#2): de weeklus was
+// structureel identiek over alle 12 weken. Twee vaste weken wijken nu
+// af in ritme en inhoud, passend bij de echte Kamerkalender binnen de
+// tijdlijn van het spel (installatie nov 2025):
+//  - Week 3 (december): begrotingsweek -- de begrotingsbehandeling van
+//    het ministerie op het eigen dossier (in werkelijkheid behandelt de
+//    Kamer de departementsbegrotingen in nov/dec).
+//  - Week 9 (maart): crisisweek -- een spoeddebat dat uitmondt in een
+//    motie van wantrouwen tegen de minister op het eigen dossier.
+// In beide weken vervangt een HANDGESCHREVEN piekweek-dilemma (met
+// coalitie/oppositie-variant en vaste effecten) het normale AI-dilemma
+// -- dat is de structuurafwijking én bespaart per piekweek twee
+// AI-calls (dilemma + gevolg), dus lagere tokenkosten per spel. De
+// energie-recharge is in piekweken +2 i.p.v. +3 (overvolle agenda).
+// De vaste effecten zijn bewust iets groter dan normale dilemma's en
+// worden NIET door de fase-factor van de spanningscurve geschaald.
+const PIEKWEKEN = {
+  3: {
+    naam: 'Begrotingsweek',
+    icoon: '📊',
+    banner: 'De Tweede Kamer behandelt deze week de begrotingen — ook die van het ministerie op jouw beleidsterrein. Langere vergaderdagen, meer moties en amendementen dan normaal.',
+    agendaDebatTitel: 'Begrotingsbehandeling: ',
+    agendaDebatMeta: 'Hele week · Plenaire zaal',
+    nieuws_item: 'Kamer in marathonweek voor begrotingsbehandeling',
+    energieRecharge: 2,
+    coalitie: {
+      context: 'Het is begrotingsweek: de Kamer behandelt de begroting van het ministerie dat over jouw beleidsterrein gaat. In de begroting zitten ook bezuinigingen die binnen jouw dossier pijn doen — een compromis uit het coalitieakkoord.',
+      vraag: 'Als coalitie-Kamerlid wordt van je verwacht dat je de begroting steunt. Hoe stel je je op in het begrotingsdebat?',
+      keuzes: [
+        { tekst: 'Je verdedigt de volledige begroting, inclusief de bezuinigingen op jouw dossier — afspraak is afspraak.',
+          effecten: { loyaliteit: 4, integriteit: -2 }, fractie: 8,
+          headline: 'Coalitie sluit rijen in begrotingsdebat',
+          gevolg: 'Je fractieleider prijst je optreden in de fractievergadering. Organisaties uit jouw werkveld noemen je verdediging van de bezuinigingen "teleurstellend".',
+          uitleg: 'Bij de begrotingsbehandeling telt coalitiediscipline extra zwaar: stemt een coalitiepartij tegen een begroting, dan wankelt het kabinet. Loyaal verdedigen versterkt je positie binnen de fractie, maar kan schuren met je eigen overtuiging.' },
+        { tekst: 'Je steunt de begroting, maar dient met een coalitiegenoot een amendement in dat binnen jouw dossier geld verschuift naar het grootste knelpunt.',
+          effecten: { dossier: 3, populariteit: 1 }, fractie: 4,
+          headline: 'Coalitie-amendement verschuift geld binnen begroting',
+          gevolg: 'Je amendement haalt een meerderheid. Een klein maar zichtbaar succes op je eigen dossier, zonder de coalitie in verlegenheid te brengen.',
+          uitleg: 'Een amendement wijzigt de begroting zelf en moet daarom een financiële dekking hebben. Zo kunnen Kamerleden binnen de kaders van het coalitieakkoord tóch eigen accenten leggen — zo werkt medewetgeving in de praktijk.' },
+        { tekst: 'Je laat in het debat openlijk twijfel horen over de bezuinigingen op jouw dossier.',
+          effecten: { integriteit: 3, media: 2, loyaliteit: -3 }, fractie: -10,
+          headline: 'Scheurtje in coalitie tijdens begrotingsdebat',
+          gevolg: 'Je kritische inbreng is hét fragment van de avond. Je fractieleider is not amused: "Dit bespreken we intern, niet via de interruptiemicrofoon."',
+          uitleg: 'Openlijke twijfel van een coalitielid bij de begroting is groot nieuws, juist omdat het zeldzaam is. Het levert zichtbaarheid en geloofwaardigheid op, maar zet je positie binnen de fractie onder druk.' },
+      ],
+    },
+    oppositie: {
+      context: 'Het is begrotingsweek: de Kamer behandelt de begroting van het ministerie dat over jouw beleidsterrein gaat. Op jouw dossier vallen zichtbare gaten — precies waar jouw fractie al langer op wijst.',
+      vraag: 'Als oppositie-Kamerlid heb je deze week meer spreektijd en aandacht dan normaal. Hoe gebruik je die?',
+      keuzes: [
+        { tekst: 'Je voert fel oppositie: de begroting laat op jouw dossier grote gaten vallen, en dat zeg je in het debat én in elk interview.',
+          effecten: { loyaliteit: 3, media: 2, populariteit: -1 }, fractie: 8,
+          headline: 'Oppositie haalt hard uit in begrotingsdebat',
+          gevolg: 'Je fractie is tevreden over je scherpe toon. Een deel van de kijkers vindt het vooral veel geschreeuw en weinig oplossing.',
+          uitleg: 'De begrotingsbehandeling is voor de oppositie hét moment om verschillen zichtbaar te maken — daar is het debat ook voor bedoeld. Maar alleen aanvallen zonder alternatief kan bij kiezers ook tegen je werken.' },
+        { tekst: 'Je dient een amendement in met een concrete dekking, en zoekt daarvoor steun bij andere fracties — ook bij de coalitie.',
+          effecten: { dossier: 3, integriteit: 2, media: -1 }, fractie: 2,
+          headline: 'Oppositie-amendement krijgt brede steun',
+          gevolg: 'Je amendement haalt net een meerderheid omdat een coalitiepartij meestemt. Weinig spektakel, wel een concreet resultaat op je dossier.',
+          uitleg: 'Bij een minderheidskabinet kan de oppositie echt iets binnenhalen: het kabinet heeft per onderwerp steun nodig. Een goed onderbouwd amendement met dekking maakt meer kans dan een fel betoog — maar haalt zelden het journaal.' },
+        { tekst: 'Je steunt onderdelen van de begroting die goed uitpakken voor jouw dossier — tegen de lijn van je fractie in.',
+          effecten: { integriteit: 3, populariteit: 1, loyaliteit: -3 }, fractie: -8,
+          headline: 'Oppositielid wijkt af bij begrotingsstemming',
+          gevolg: 'Je onafhankelijke opstelling wordt door commentatoren geprezen, maar in de fractievergadering moet je je verantwoorden.',
+          uitleg: 'Kamerleden stemmen formeel zonder last: niemand kan ze dwingen. In de praktijk verwachten fracties wel dat iedereen de gezamenlijke lijn volgt — afwijken is toegestaan, maar heeft binnen de fractie een prijs.' },
+      ],
+    },
+  },
+  9: {
+    naam: 'Crisisweek',
+    icoon: '🔥',
+    banner: 'Crisis: uit onderzoeksjournalistiek blijkt dat de minister op jouw beleidsterrein de Kamer onvolledig heeft geïnformeerd. Er komt een spoeddebat — en een motie van wantrouwen.',
+    agendaDebatTitel: 'Spoeddebat + motie van wantrouwen: ',
+    agendaDebatMeta: 'Donderdag · Plenaire zaal (avond)',
+    nieuws_item: 'Motie van wantrouwen tegen minister na onthulling',
+    energieRecharge: 2,
+    coalitie: {
+      context: 'Journalisten onthullen dat de minister op jouw beleidsterrein de Kamer onvolledig heeft geïnformeerd over de gevolgen van een besluit. Na een verhit spoeddebat dient de oppositie een motie van wantrouwen in. Als die wordt aangenomen, moet de minister aftreden.',
+      vraag: 'De hoofdelijke stemming is vanavond. Wat doe je als coalitie-Kamerlid?',
+      keuzes: [
+        { tekst: 'Je stemt tegen de motie en verdedigt de minister: iedereen maakt fouten, en de minister heeft excuses aangeboden.',
+          effecten: { loyaliteit: 4, integriteit: -2 }, fractie: 8,
+          headline: 'Coalitie houdt minister in het zadel',
+          gevolg: 'De motie haalt geen meerderheid; de minister blijft aan. Jouw steun wordt binnen de coalitie gezien als betrouwbaar — critici noemen het "wegkijken".',
+          uitleg: 'Een motie van wantrouwen is het zwaarste middel van de Kamer: aangenomen betekent (naar ongeschreven staatsrecht) dat de minister moet vertrekken. Coalitiefracties steunen "hun" ministers vrijwel altijd — anders valt het kabinet.' },
+        { tekst: 'Je stemt tegen de motie, maar eist in je stemverklaring dat alle achtergehouden stukken alsnog naar de Kamer komen.',
+          effecten: { dossier: 2, integriteit: 1, media: 1 }, fractie: 2,
+          headline: 'Coalitielid stelt voorwaarden aan steun minister',
+          gevolg: 'De minister zegt toe alle stukken te sturen. Je hield de coalitie overeind én markeerde dat onvolledig informeren niet zonder gevolg blijft.',
+          uitleg: 'De informatiepositie van de Kamer (artikel 68 Grondwet) is de kern van deze crisis: zonder volledige informatie kan de Kamer haar controlerende taak niet uitvoeren. Voorwaardelijke steun is een klassieke middenweg in coalitieland.' },
+        { tekst: 'Je stemt vóór de motie van wantrouwen: de Kamer onvolledig informeren raakt de kern van je werk als volksvertegenwoordiger.',
+          effecten: { integriteit: 4, media: 3, loyaliteit: -6, populariteit: 1 }, fractie: -15,
+          headline: 'Coalitielid stemt voor motie van wantrouwen',
+          gevolg: 'Je stem is landelijk nieuws — een coalitielid dat een eigen minister laat vallen is hoogst zeldzaam. In je fractie is de sfeer om te snijden.',
+          uitleg: 'Dit is de zwaarst denkbare afwijking voor een coalitielid: je zet de stabiliteit van het kabinet op het spel voor een principe. Het gebeurt in de praktijk vrijwel nooit — en wie het doet, ligt binnen de fractie zwaar onder vuur.' },
+      ],
+    },
+    oppositie: {
+      context: 'Journalisten onthullen dat de minister op jouw beleidsterrein de Kamer onvolledig heeft geïnformeerd over de gevolgen van een besluit. Na een verhit spoeddebat dient de oppositie — mede namens jouw fractie — een motie van wantrouwen in.',
+      vraag: 'De hoofdelijke stemming is vanavond. Wat doe je als oppositie-Kamerlid?',
+      keuzes: [
+        { tekst: 'Je stemt vóór en houdt een fel betoog: deze minister kan geen dag langer aanblijven.',
+          effecten: { loyaliteit: 3, media: 2 }, fractie: 8,
+          headline: 'Oppositie eist vertrek minister',
+          gevolg: 'De motie haalt geen meerderheid, maar jouw betoog wordt veel gedeeld. Je fractie is tevreden: dit is waar oppositie voor staat.',
+          uitleg: 'Ook een verworpen motie van wantrouwen heeft effect: de minister staat onder verscherpt toezicht en de kwestie is publiek gemarkeerd. Controle van de regering werkt ook via druk, niet alleen via meerderheden.' },
+        { tekst: 'Je stemt vóór, maar houdt je betoog zakelijk: eerst alle feiten op tafel, het gaat om de informatiepositie van de Kamer.',
+          effecten: { integriteit: 2, dossier: 2, media: -1 }, fractie: 4,
+          headline: 'Oppositie wijst op informatieplicht kabinet',
+          gevolg: 'Je zakelijke lijn krijgt waardering van collega-Kamerleden, ook uit de coalitie. De talkshows bellen een collega die feller was.',
+          uitleg: 'Artikel 68 van de Grondwet verplicht ministers de Kamer te informeren. Door de crisis daarop toe te spitsen — en niet op de persoon — bouw je gezag op als inhoudelijk Kamerlid, al levert het minder schermtijd op.' },
+        { tekst: 'Je stemt tegen de motie: onvolledig informeren is ernstig, maar wegsturen vind je hier een te zwaar middel.',
+          effecten: { integriteit: 3, media: 1, loyaliteit: -3 }, fractie: -8,
+          headline: 'Oppositielid stemt tegen motie van wantrouwen',
+          gevolg: 'Je afwijkende stem valt op — zeker omdat je eigen fractie de motie mede indiende. Sommigen noemen het moedig, je fractieleider noemt het "onhandig".',
+          uitleg: 'Ook oppositiefracties kennen een fractielijn. Tegen een motie stemmen die je eigen fractie mede indiende is formeel toegestaan (stemmen zonder last), maar wordt intern zelden in dank afgenomen.' },
+      ],
+    },
+  },
+};
+
+// Bouwt uit een PIEKWEKEN-entry een object met dezelfde vorm als een
+// AI-dilemma, zodat renderDilemma() en de agenda-flow ongewijzigd werken.
+// De marker `piekweek` stuurt de afwijkende afhandeling in makeChoice().
+function buildPiekweekDilemma(week) {
+  const pw = PIEKWEKEN[week];
+  const party = PARTIES.find(p => p.id === state.party);
+  const variant = party && party.coalition ? pw.coalitie : pw.oppositie;
+  return {
+    piekweek: week,
+    dilemma_context: variant.context,
+    dilemma_vraag: variant.vraag,
+    keuze_a: variant.keuzes[0],
+    keuze_b: variant.keuzes[1],
+    keuze_c: variant.keuzes[2],
+    nieuws_item: pw.nieuws_item,
+  };
+}
+
 const FORMATIE_DILEMMA = {
   coalitie: {
     context: 'Na zes weken informateur-gesprekken hebben D66, VVD en CDA een coalitieakkoord gesloten — een minderheidskabinet met 66 van de 150 zetels. Niet elk onderdeel van het akkoord is waar jouw fractie voluit voor stond; compromissen waren nodig om er samen uit te komen.',
@@ -2109,9 +2305,17 @@ async function fetchDilemmaContent(week, party) {
   const label = `dilemma week ${week}`;
   try {
     const spelstandContext = buildSpelstandContext(week);
+    // Spanningscurve (game-designer#4): inhoudelijke hint richting het
+    // einde van het seizoen. De GEGARANDEERDE curve zit in de code-
+    // schaling in makeChoice; dit stuurt alleen de toon van de content.
+    const faseHint = week >= 9
+      ? '\nHet politieke seizoen nadert zijn einde: maak het dilemma inhoudelijk zwaarder dan gemiddeld (grotere belangen, scherpere tegenstelling), passend bij een naderende afrekening in peilingen en eindrapport.'
+      : week <= 3
+      ? '\nDit Kamerlid is net begonnen: maak het dilemma toegankelijk, passend bij een nieuw Kamerlid dat nog aan het inwerken is.'
+      : '';
     const dilemmaResult = await callClaude([{
       role: 'user',
-      content: `Genereer ALLEEN het dilemma voor week ${week} voor ${state.name} (${party.name}, ${state.theme}).${spelstandContext}
+      content: `Genereer ALLEEN het dilemma voor week ${week} voor ${state.name} (${party.name}, ${state.theme}).${spelstandContext}${faseHint}
 
 Geef ALLEEN dit JSON-object, niets anders:
 {
@@ -2142,7 +2346,12 @@ Geef ALLEEN dit JSON-object, niets anders:
 function buildWeekPrefetch(week) {
   const party = PARTIES.find(p => p.id === state.party);
   if (!party) return Promise.resolve(null);
-  const dilemmaPromise = fetchDilemmaContent(week, party);
+  // In een piekweek is het dilemma handgeschreven (game-designer#2):
+  // sla de AI-dilemma-call dan volledig over -- scheelt tokenkosten.
+  // generateWeeklyContent() gebruikt voor die weken buildPiekweekDilemma().
+  const dilemmaPromise = PIEKWEKEN[week]
+    ? Promise.resolve(null)
+    : fetchDilemmaContent(week, party);
   const motiesPromise = fetchMotiesContent(week, party).catch(e => {
     console.log('Moties-prefetch mislukt:', e.message);
     return null;
@@ -2199,7 +2408,11 @@ async function generateWeeklyContent() {
     }
 
     let dilemma;
-    if (cached && cached.dilemma) {
+    if (PIEKWEKEN[week]) {
+      // Piekweek (game-designer#2): handgeschreven dilemma vervangt het
+      // AI-dilemma -- geen AI-call, dus instant en zonder tokenkosten.
+      dilemma = buildPiekweekDilemma(week);
+    } else if (cached && cached.dilemma) {
       dilemma = cached.dilemma;
     } else {
       showLoading('Dilemma wordt geladen...');
@@ -2237,6 +2450,13 @@ async function generateWeeklyContent() {
 }
 
 function renderDilemma() {
+  // Mini-bugfix (ontdekt bij Groep 6-tests): de week-badge in de kop van
+  // het dilemma-paneel werd alleen bij de allereerste week gezet
+  // (applyWeekContent) en bleef daarna op "Week 1" staan. Hier bijwerken
+  // dekt élk pad dat het dilemma opnieuw tekent, incl. weekwissels.
+  const weekBadge = document.getElementById('dilemma-week-badge');
+  if (weekBadge && state.week) weekBadge.textContent = 'Week ' + state.week;
+
   if (!state.pendingDilemma) {
     document.getElementById('dilemma-content').innerHTML = '<div class="c-dim" style="font-size:12px">Ga naar Agenda en start de volgende week om een dilemma te ontvangen.</div>';
     return;
@@ -2251,7 +2471,14 @@ function renderDilemma() {
     return;
   }
 
+  // Piekweek-badge (game-designer#2) boven het handgeschreven dilemma.
+  const pwDilemma = d.piekweek ? PIEKWEKEN[d.piekweek] : null;
+  const pwBadgeHTML = pwDilemma
+    ? `<div class="piekweek-banner">${pwDilemma.icoon} <strong>${escapeHtml(pwDilemma.naam.toUpperCase())}</strong> — deze week wijkt af van het normale ritme.</div>`
+    : '';
+
   document.getElementById('dilemma-content').innerHTML = `
+    ${pwBadgeHTML}
     <div class="dilemma-context">${escapeHtml(d.dilemma_context || '')}</div>
     <div class="dilemma-text">${escapeHtml(d.dilemma_vraag || '')}</div>
     <div class="choices">
@@ -2285,6 +2512,19 @@ async function makeChoice(idx) {
 
   try {
     const party = PARTIES.find(p => p.id === state.party);
+
+    let res;
+    if (d.piekweek) {
+      // Piekweek (game-designer#2): effecten, gevolg en uitleg zijn
+      // handgeschreven -- geen AI-call voor het gevolg nodig.
+      res = {
+        headline: chosen.headline,
+        gevolg: chosen.gevolg,
+        stat_changes: { ...chosen.effecten },
+        fractie_change: chosen.fractie || 0,
+        uitleg: chosen.uitleg,
+      };
+    } else {
     const resultText = await callClaude([{
       role: 'user',
       content: `In het parlementair simulatiespel heeft ${state.name} (${party.name}) gekozen voor:
@@ -2313,7 +2553,6 @@ uitleg is een educatieve toelichting van max 2 zinnen voor middelbare scholieren
     }],
     'Je bent een spelmotor. Antwoord uitsluitend met geldige JSON, zonder extra tekst of markdown.', 400, `dilemma-gevolg week ${state.week}`);
 
-    let res;
     try {
       const clean = resultText.replace(/```json/g,'').replace(/```/g,'').trim();
       res = JSON.parse(clean);
@@ -2325,16 +2564,27 @@ uitleg is een educatieve toelichting van max 2 zinnen voor middelbare scholieren
         fractie_change: 0
       };
     }
+    } // einde niet-piekweek-pad
+
+    // Spanningscurve (game-designer#4): de fase-factor bepaalt hoe zwaar
+    // effecten doortellen -- in code afgedwongen, dus onafhankelijk van
+    // wat de AI toevallig teruggeeft. Piekweek-effecten zijn al met de
+    // hand op zwaarte ontworpen en worden niet nogmaals geschaald.
+    const fase = getWeekFase(state.week);
+    const faseFactor = d.piekweek ? 1 : fase.factor;
 
     // Apply changes
     const changes = [];
     for (const [key, val] of Object.entries(res.stat_changes)) {
       if (key in state.stats) {
-        state.stats[key] = Math.max(0, Math.min(100, state.stats[key] + val));
-        if (val !== 0) changes.push({ key: STAT_LABELS[key], val });
+        const geschaald = schaalEffect(val, faseFactor);
+        state.stats[key] = Math.max(0, Math.min(100, state.stats[key] + geschaald));
+        if (geschaald !== 0) changes.push({ key: STAT_LABELS[key], val: geschaald });
       }
     }
-    state.fractieApproval = Math.max(0, Math.min(100, state.fractieApproval + (res.fractie_change || 0)));
+    const fractieGeschaald = schaalEffect(res.fractie_change || 0, faseFactor);
+    res.fractie_change = fractieGeschaald;
+    state.fractieApproval = Math.max(0, Math.min(100, state.fractieApproval + fractieGeschaald));
 
     // Energie cost
     state.stats.energie = Math.max(0, state.stats.energie - 1);
@@ -2379,6 +2629,7 @@ uitleg is een educatieve toelichting van max 2 zinnen voor middelbare scholieren
           <div class="uitleg-title">💡 Waarom veranderen deze statistieken?</div>
           <div class="uitleg-text">${escapeHtml(res.uitleg || 'Elke politieke keuze heeft gevolgen voor hoe kiezers, media en je fractie je zien.')}</div>
           <div class="uitleg-text" style="margin-top:6px;color:var(--dim);font-style:italic">${fractieUitleg} Fractie-goedkeuring: ${fractieChange > 0 ? '+' : ''}${fractieChange}%</div>
+          ${faseFactor !== 1 && fase.uitleg ? `<div class="uitleg-text" style="margin-top:6px;color:var(--dim)">📈 ${escapeHtml(fase.uitleg)}</div>` : ''}
           <div class="uitleg-stats">${uitlegItems}</div>
         </div>
         <div class="reflectie-box">
@@ -2503,13 +2754,14 @@ Antwoord ALLEEN als geldige JSON zonder markdown:
 // deed. Dit geeft er een echt, oplopend gevolg aan:
 //  - onder 30%: kleine wekelijkse imagoschade (populariteit/media -1),
 //    zolang het aanhoudt -- "gedoe in de fractie" kost aandacht.
-//  - 3 aaneengesloten weken onder 20%: eenmalige, BLIJVENDE consequentie
-//    (state.fractieVertrouwenGebroken): de fractie zet je buitenspel,
-//    je kunt voor de rest van de zittingsperiode geen eigen motie meer
-//    indienen (zie de unlock-guard in makeChoice hieronder), plus een
-//    directe populariteitsklap. Dit is onomkeerbaar, net als in de
-//    praktijk een royement niet ongedaan wordt gemaakt door daarna wel
-//    weer trouw te stemmen.
+//  - 3 aaneengesloten weken onder 20%: de fractie beperkt je werk als
+//    Kamerlid (state.fractieVertrouwenGebroken): je mag geen moties of
+//    amendementen meer namens de fractie indienen (zie de unlock-guard
+//    in makeChoice hieronder), plus een directe populariteitsklap.
+//    Dit is een interne disciplinaire maatregel -- je blijft gewoon lid
+//    van de fractie (geen afsplitsing/royement) en de beperking is
+//    HERSTELBAAR: houd je fractie-goedkeuring 2 aaneengesloten weken op
+//    60% of hoger en de fractie geeft je het vertrouwen terug.
 function pasFractieGevolgToe() {
   if (state.fractieApproval < 30) {
     state.stats.populariteit = Math.max(0, state.stats.populariteit - 1);
@@ -2522,11 +2774,26 @@ function pasFractieGevolgToe() {
     state.weekenOnderVertrouwensgrens = 0;
   }
 
-  if (state.weekenOnderVertrouwensgrens >= 3 && !state.fractieVertrouwenGebroken) {
+  if (state.fractieVertrouwenGebroken) {
+    // Herstelpad: twee aaneengesloten weken met goedkeuring >= 60% heft
+    // de beperking weer op.
+    if (state.fractieApproval >= 60) {
+      state.wekenVertrouwenHerstel = (state.wekenVertrouwenHerstel || 0) + 1;
+    } else {
+      state.wekenVertrouwenHerstel = 0;
+    }
+    if (state.wekenVertrouwenHerstel >= 2) {
+      state.fractieVertrouwenGebroken = false;
+      state.wekenVertrouwenHerstel = 0;
+      state.weekenOnderVertrouwensgrens = 0;
+      state.newsItems.unshift('Fractie herstelt vertrouwen: Kamerlid mag weer moties indienen');
+    }
+  } else if (state.weekenOnderVertrouwensgrens >= 3) {
     state.fractieVertrouwenGebroken = true;
+    state.wekenVertrouwenHerstel = 0;
     state.eigenMotieUnlocked = false;
     state.stats.populariteit = Math.max(0, state.stats.populariteit - 5);
-    state.newsItems.unshift('Fractie zet Kamerlid buitenspel na aanhoudend laag vertrouwen');
+    state.newsItems.unshift('Fractie beperkt Kamerlid: voorlopig geen eigen moties meer');
   }
 }
 
@@ -2539,7 +2806,10 @@ async function nextWeek() {
   }
   // Plafond varieert nu per partij (game-designer#1) i.p.v. het oude,
   // vaste 10 — fallback voor oude saves van vóór deze wijziging.
-  state.stats.energie = Math.min(state.energieMax || 10, state.stats.energie + 3); // recharge
+  // In piekweken (game-designer#2) is de recharge +2 i.p.v. +3: een
+  // overvolle vergaderweek laat minder ruimte om bij te tanken.
+  const recharge = (PIEKWEKEN[state.week] && PIEKWEKEN[state.week].energieRecharge) || 3;
+  state.stats.energie = Math.min(state.energieMax || 10, state.stats.energie + recharge);
   pasFractieGevolgToe();
   renderTopbar();
   renderStats();
