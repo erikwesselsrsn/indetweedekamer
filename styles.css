@@ -1291,6 +1291,17 @@
   .uitleg-stat.neu { color: var(--dim); border-color: var(--border); }
 
 
+  /* Uitleg onder de zetelverdelingstabel: hoe de peiling reageert op
+     het optreden van de speler (coalitie gedempt, oppositie versterkt). */
+  .peiling-uitleg {
+    font-size: 10px;
+    color: var(--dim);
+    line-height: 1.7;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border);
+  }
+  .peiling-uitleg strong { color: var(--teal); }
+
   /* game-designer#2: banner voor piekweken (begrotingsweek/crisisweek)
      boven de agenda en het dilemma -- opvallend maar binnen de huisstijl. */
   .piekweek-banner {

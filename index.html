@@ -398,11 +398,11 @@
                   <th>Zetels</th>
                   <th>Peiling</th>
                   <th>Status</th>
-                  <th>Fractievoorzitter</th>
                 </tr>
               </thead>
               <tbody id="fractie-table-body"></tbody>
             </table>
+            <div id="peiling-uitleg" class="peiling-uitleg"></div>
           </div>
         </div>
         <div class="panel">
@@ -728,6 +728,7 @@ function initState(party, name, theme, apiKey) {
     pendingDilemma: null,
     dilemmaAnswered: false,
     moties: [],
+    motiesLaadFout: false,
     fractieApproval: 75,
     eigenMotieUnlocked: false,
     // game-designer#3: telt aaneengesloten weken onder de vertrouwens-
@@ -895,11 +896,43 @@ Geef ALLEEN dit JSON-object:
     }
   ]
 }`
-  }], 'Antwoord ALLEEN met geldig JSON. Geen tekst ervoor of erna.', 500, `moties week ${week}`);
+  }], 'Antwoord ALLEEN met geldig JSON. Geen tekst ervoor of erna.', 700, `moties week ${week}`);
+  // ^ maxTokens terug naar 700 (zoals vóór de prompt-herschrijving van
+  // Groep 3): met 500 werd de JSON bij 3 inhoudelijk uitgewerkte moties
+  // regelmatig afgekapt, waardoor JSON.parse faalde en er stilletjes
+  // GEEN moties verschenen. Zie ook parseMotiesRobust hieronder.
 
   let mc = motiesResult.replace(/\`\`\`json/gi,'').replace(/\`\`\`/g,'').trim();
   const mjm = mc.match(/\{[\s\S]*\}/); if (mjm) mc = mjm[0];
-  return JSON.parse(mc);
+  return parseMotiesRobust(mc);
+}
+
+// Vangnet voor afgekapte/onvolledige moties-JSON: probeer eerst gewoon
+// te parsen; lukt dat niet, red dan de moties die WEL compleet in de
+// tekst staan door de array af te kappen na het laatste volledige
+// motie-object. Zo levert een afgekapte respons nog steeds 1-2 moties
+// op in plaats van helemaal niets.
+function parseMotiesRobust(tekst) {
+  try { return JSON.parse(tekst); } catch (e) { /* doorgaan naar redding */ }
+  const laatsteCompleet = tekst.lastIndexOf('}');
+  // Kap steeds terug tot het vorige '}' en probeer de structuur te
+  // sluiten als "...} ] }" -- vindt het laatste punt waarop de array
+  // van moties nog geldig af te maken is.
+  let pos = laatsteCompleet;
+  while (pos > 0) {
+    const kandidaat = tekst.slice(0, pos + 1)
+      .replace(/,\s*\{[^{}]*$/, '') // half begonnen object weghalen
+      + ']}';
+    try {
+      const parsed = JSON.parse(kandidaat);
+      if (parsed && Array.isArray(parsed.moties) && parsed.moties.length > 0) {
+        console.warn(`Moties-JSON was afgekapt; ${parsed.moties.length} complete motie(s) gered.`);
+        return parsed;
+      }
+    } catch (e) { /* volgende kandidaat */ }
+    pos = tekst.lastIndexOf('}', pos - 1);
+  }
+  throw new Error('Moties-JSON onherstelbaar ongeldig');
 }
 
 // Kiest een realistische, zetel-gewogen indiener voor een motie: de kans dat
@@ -961,11 +994,25 @@ function applyMotiesContent(week, motiesData) {
 
 async function loadMotiesAchtergrond(week, party) {
   try {
+    state.motiesLaadFout = false;
     const motiesData = await fetchMotiesContent(week, party);
     applyMotiesContent(week, motiesData);
   } catch(e) {
+    // Niet langer alleen een console-regel: de speler zag dan een lege
+    // moties-tab zonder enige uitleg ("ik krijg geen moties meer").
+    // Toon de fout in de tab zelf, met een retry-knop.
     console.log('Moties laden mislukt:', e.message);
+    state.motiesLaadFout = true;
+    renderMoties();
   }
+}
+
+function retryMoties() {
+  const party = PARTIES.find(p => p.id === state.party);
+  if (!party) return;
+  const el = document.getElementById('moties-list');
+  if (el) el.innerHTML = '<div class="c-dim" style="padding:12px;font-size:12px">⏳ Moties worden opnieuw geladen...</div>';
+  loadMotiesAchtergrond(state.week, party);
 }
 
 
@@ -1050,19 +1097,22 @@ function renderAgenda() {
 function renderFractie() {
   if (!state.party) return;
 
-  // Main zetelverdeling table — all parties
+  // Main zetelverdeling table — all parties.
+  // Vereenvoudigd op verzoek: geen fractievoorzitterskolom en geen
+  // uitklapbare ledenlijsten meer -- alleen partij, zetels, peiling en
+  // status. De data zelf (FRACTIE_LEDEN, incl. voorzitters) blijft op
+  // de achtergrond bestaan: die wordt gebruikt voor motie-indieners
+  // (pickMotieIndiener) en kan elders in het spel nodig zijn.
   const tbody = document.getElementById('fractie-table-body');
   tbody.innerHTML = PARTIES.map(p => {
     const isPlayer = p.id === state.party;
     const coal = p.coalition ? '<span class="c-teal">Coalitie</span>' : '<span class="c-dim">Oppositie</span>';
-    const ledenInfo = FRACTIE_LEDEN[p.id];
-    const voorzitter = ledenInfo ? ledenInfo.voorzitter : '—';
     const peilingZetels = state.peiling ? state.peiling[p.id] : p.seats;
     const trend = getPeilingTrend(p.id);
     const trendCls = trend === '▲' ? 'peiling-trend-up' : trend === '▼' ? 'peiling-trend-down' : 'peiling-trend-same';
     const peilingVerschil = peilingZetels - p.seats;
     const verschilStr = peilingVerschil > 0 ? `+${peilingVerschil}` : peilingVerschil < 0 ? `${peilingVerschil}` : '=';
-    return `<tr style="${isPlayer ? 'background:rgba(0,184,184,0.06);' : ''}cursor:pointer" onclick="toggleFractieDetail('${p.id}')">
+    return `<tr style="${isPlayer ? 'background:rgba(0,184,184,0.06);' : ''}">
       <td style="color:${isPlayer ? 'var(--teal)' : 'var(--white)'}">
         ${isPlayer ? '▶ ' : ''}${p.name}
       </td>
@@ -1072,14 +1122,22 @@ function renderFractie() {
         <span class="${trendCls}" style="font-size:10px"> ${trend} <span style="font-size:9px;color:var(--dim)">(${verschilStr})</span></span>
       </td>
       <td>${coal}</td>
-      <td style="color:var(--dim);font-size:10px">${voorzitter}</td>
-    </tr>
-    <tr id="detail-${p.id}" style="display:none">
-      <td colspan="4" style="padding:0">
-        <div class="fractie-detail" id="detail-inner-${p.id}"></div>
-      </td>
     </tr>`;
   }).join('');
+
+  // Korte uitleg onder de tabel: de peiling is een spelmechaniek die
+  // reageert op het optreden van de speler (zie berekenPeiling).
+  const peilingUitlegEl = document.getElementById('peiling-uitleg');
+  if (peilingUitlegEl) {
+    const partijNu = PARTIES.find(p => p.id === state.party);
+    peilingUitlegEl.innerHTML = `
+      📊 <strong>Hoe werkt de peiling?</strong> De wekelijkse peiling van jouw partij reageert op
+      jouw optreden: hoe zichtbaarder (mediabehendigheid) en populairder je wordt, hoe beter je
+      partij ervoor staat — en andersom. Gedoe binnen de fractie kost je partij zetels in de
+      peiling. ${partijNu && partijNu.coalition
+        ? 'Als coalitiepartij werkt dit gedempt: regeren kost bijna altijd zetels, ook als je het goed doet — constructief zijn wordt in peilingen zelden beloond.'
+        : 'Als oppositiepartij werkt dit versterkt: scherp en zichtbaar oppositie voeren wordt in peilingen sneller beloond dan regeren — dat zie je ook bij echte verkiezingen.'}`;
+  }
 
   const coalInfo = document.getElementById('coalitie-info');
   coalInfo.innerHTML = `D66: 26<br>VVD: 22<br>CDA: 18<br><span style="color:var(--teal)">Totaal: 66</span><br><span style="color:var(--dim);font-size:9px">Minderheidskabinet</span>`;
@@ -1138,44 +1196,13 @@ function renderFractie() {
         Kamerlidmaatschap — jij speelt momenteel als ${party && party.coalition ? 'coalitiepartij' : 'oppositiepartij'}.
       </div>
     </div>`;
-
-  // Auto-expand player's own fractie
-  toggleFractieDetail(state.party, true);
 }
 
-function toggleFractieDetail(partyId, forceOpen) {
-  const row = document.getElementById('detail-' + partyId);
-  if (!row) return;
-  const isOpen = row.style.display !== 'none';
-  if (forceOpen === true && isOpen) return;
-  if (!isOpen || forceOpen) {
-    row.style.display = 'table-row';
-    const inner = document.getElementById('detail-inner-' + partyId);
-    // Only render once — cache after first render
-    if (inner.dataset.rendered === '1') return;
-    inner.dataset.rendered = '1';
-    const ledenInfo = FRACTIE_LEDEN[partyId];
-    if (!ledenInfo) { inner.innerHTML = '<div style="padding:8px;color:var(--dim);font-size:11px">Geen ledenlijst beschikbaar.</div>'; return; }
-    const isPlayerParty = partyId === state.party;
-    const removedMember = state.removedMembers && state.removedMembers[partyId];
-    const ledenHTML = ledenInfo.leden.map(naam => {
-      const isVoorzitter = naam === ledenInfo.voorzitter;
-      const isRemoved = naam === removedMember;
-      const isPlayer = isPlayerParty && naam === removedMember;
-      if (isRemoved && isPlayerParty) {
-        return `<span class="fractie-lid player-seat" title="Jouw zetel">[${escapeHtml(state.name)}]</span>`;
-      }
-      if (isRemoved) return null; // hide replaced member in other parties (not applicable, only player party)
-      return `<span class="fractie-lid${isVoorzitter ? ' lid-voorzitter' : ''}" title="${isVoorzitter ? 'Fractievoorzitter' : ''}">${escapeHtml(naam)}${isVoorzitter ? ' ★' : ''}</span>`;
-    }).filter(Boolean).join('');
-    inner.innerHTML = `<div style="padding:8px 10px">
-      <div style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Fractieleden</div>
-      <div class="fractie-leden-grid">${ledenHTML}</div>
-    </div>`;
-  } else {
-    row.style.display = 'none';
-  }
-}
+// De uitklapbare fractieleden-detailweergave (toggleFractieDetail) is op
+// verzoek verwijderd uit de UI. FRACTIE_LEDEN zelf (namen + voorzitters
+// per fractie) blijft bewust bestaan als achtergronddata: het voedt
+// pickMotieIndiener() en initRemovedMembers(), en kan later elders in
+// het spel (bijv. AI-prompts) nodig zijn.
 
 function renderProfile() {
   if (!state.party) return;
@@ -1207,16 +1234,22 @@ function updateTicker() {
 
 function renderMoties() {
   const el = document.getElementById('moties-list');
-  if (state.moties.length === 0) {
-    el.innerHTML = '<div class="c-dim" style="padding:12px;font-size:12px">Nog geen moties ingediend deze week. Start een nieuwe week via de Agenda.</div>';
-    return;
-  }
 
   // Toon alleen moties van de huidige week
   const huidigeWeek = state.week;
   const motiesDezeWeek = state.moties
     .map((m, i) => ({ m, i }))
     .filter(({ m }) => (m.week || 1) === huidigeWeek);
+
+  // Mislukte moties-call zichtbaar maken met retry-knop, i.p.v. een
+  // lege tab zonder uitleg.
+  if (motiesDezeWeek.length === 0 && state.motiesLaadFout) {
+    el.innerHTML = `<div class="error-msg" style="margin:12px">
+      De moties voor deze week konden niet worden geladen.
+      <button class="btn-continue" style="margin-top:8px;display:block" onclick="retryMoties()">↻ OPNIEUW PROBEREN</button>
+    </div>`;
+    return;
+  }
 
   if (motiesDezeWeek.length === 0) {
     el.innerHTML = '<div class="c-dim" style="padding:12px;font-size:12px">Nog geen moties deze week. Start een nieuwe week via de Agenda.</div>';
@@ -1485,30 +1518,53 @@ function updateNextWeekButton() {
 
 // ==================== PEILING ====================
 
+// De peiling van de spelerpartij is een direct gevolg van hoe het
+// Kamerlid het spel speelt: hoe zichtbaarder (mediabehendigheid) en
+// populairder het optreden, hoe beter de partij ervoor staat -- en
+// omgekeerd. Twee ontwerpkeuzes daarbij:
+//  1. Gemeten t.o.v. de STARTWAARDEN van de eigen partij (niet een
+//     vast getal): elke partij begint immers met andere stats.
+//  2. Asymmetrie coalitie/oppositie, zoals bij recente verkiezingen
+//     zichtbaar: oppositie voeren wordt in peilingen sneller beloond
+//     (factor 1.4 op de winst) dan constructief regeren (factor 0.7,
+//     regeren kost vrijwel altijd zetels). Voor oppositiepartijen telt
+//     loyaliteit (= daar: scherp oppositie voeren) daarom ook mee.
+// Aanhoudend gedoe in de fractie (goedkeuring < 30%) kost de partij
+// zetels, bovenop de wekelijkse imagoschade uit pasFractieGevolgToe.
 function berekenPeiling() {
   const basis = {};
   PARTIES.forEach(p => { basis[p.id] = p.seats; });
 
-  const pop = state.stats.populariteit;
-  const integ = state.stats.integriteit;
-  const media = state.stats.media;
+  const party = PARTIES.find(p => p.id === state.party);
+  const start = party ? party.stats : { populariteit: 35, media: 35, loyaliteit: 35 };
   const week = state.week;
 
-  // Spelerpartij: beïnvloed door meerdere stats t.o.v. startwaarde 35
-  const popFactor   = (pop   - 35) / 150;  // range: -0.23 tot +0.43
-  const integFactor = (integ - 35) / 300;
-  const mediaFactor = (media - 35) / 400;
-  const playerSeats = basis[state.party] || 3;
-  const playerPeiling = Math.max(1, Math.round(playerSeats * (1 + popFactor + integFactor + mediaFactor)));
+  // Prestatie t.o.v. de eigen startwaarden
+  const popDelta = state.stats.populariteit - start.populariteit;
+  const mediaDelta = state.stats.media - start.media;
+  const oppositieDelta = party && !party.coalition
+    ? state.stats.loyaliteit - start.loyaliteit  // oppositie: loyaliteit = oppositie voeren
+    : 0;
 
-  // Andere partijen: wekelijkse fluctuatie met meer variatie per partij
+  // Gewogen score, asymmetrisch geschaald (oppositie loont sneller)
+  const richting = party && party.coalition ? 0.7 : 1.4;
+  let score = (popDelta * 0.5 + mediaDelta * 0.3 + oppositieDelta * 0.2) * richting;
+  if (state.fractieApproval < 30) score -= 3; // zichtbaar gedoe schaadt de partij
+
+  // Score → zetels: relatief deel (grote partijen bewegen in zetels
+  // meer) + klein absoluut deel (zodat ook een eenmansfractie kan
+  // stijgen of dalen in de peiling).
+  const playerSeats = basis[state.party] || 3;
+  const playerPeiling = Math.max(1, Math.round(playerSeats + playerSeats * score / 100 + score / 10));
+
+  // Andere partijen: deterministische wekelijkse fluctuatie (geen
+  // Math.random: zo geeft laden van een save dezelfde peiling terug)
   const peiling = {};
   let totaal = 0;
   PARTIES.forEach(p => {
     if (p.id === state.party) {
       peiling[p.id] = playerPeiling;
     } else {
-      // Gevarieerde fluctuatie: combinatie van week + partijkenmerken
       const seed1 = Math.sin(week * 2.3 + p.seats * 1.7) * 2.5;
       const seed2 = Math.cos(week * 1.1 + p.seats * 0.9) * 1.5;
       const fluctuatie = Math.round(seed1 + seed2); // -4 tot +4
@@ -1517,10 +1573,16 @@ function berekenPeiling() {
     totaal += peiling[p.id];
   });
 
-  // Normaliseer naar 150 zetels
-  const factor = 150 / totaal;
+  // Normaliseer naar 150 zetels, maar rond de spelerpartij NIET weg:
+  // de eigen peiling is een kernsignaal voor de speler en mag niet
+  // door afronding van andere partijen verspringen.
+  const overigTotaal = totaal - peiling[state.party];
+  const overigDoel = 150 - peiling[state.party];
+  const factor = overigDoel > 0 && overigTotaal > 0 ? overigDoel / overigTotaal : 1;
   PARTIES.forEach(p => {
-    peiling[p.id] = Math.max(1, Math.round(peiling[p.id] * factor));
+    if (p.id !== state.party) {
+      peiling[p.id] = Math.max(1, Math.round(peiling[p.id] * factor));
+    }
   });
 
   return peiling;
@@ -2811,6 +2873,11 @@ async function nextWeek() {
   const recharge = (PIEKWEKEN[state.week] && PIEKWEKEN[state.week].energieRecharge) || 3;
   state.stats.energie = Math.min(state.energieMax || 10, state.stats.energie + recharge);
   pasFractieGevolgToe();
+  // Peiling wekelijks bijwerken. Dit ontbrak: updatePeiling() werd
+  // alleen bij de allereerste week aangeroepen (applyWeekContent),
+  // waardoor de peiling het hele spel stil bleef staan op de
+  // verkiezingsuitslag en de trendpijlen altijd "=" toonden.
+  updatePeiling();
   renderTopbar();
   renderStats();
   renderFractie();
