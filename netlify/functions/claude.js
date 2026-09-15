@@ -76,7 +76,12 @@ exports.handler = async function (event) {
         catch (e) { resolve({ statusCode: 502, headers, body: JSON.stringify({ error: "API-fout." }) }); }
       });
     });
-    req.on("error", (e) => resolve({ statusCode: 502, headers, body: JSON.stringify({ error: e.message }) }));
+    req.on("error", (e) => {
+      // Zelfde principe als in auth.js: geen ruwe netwerkfout doorsturen,
+      // alleen server-side loggen.
+      console.error("Claude-proxy netwerkfout:", e.message);
+      resolve({ statusCode: 502, headers, body: JSON.stringify({ error: "Kan geen verbinding maken met de AI-service. Probeer het later opnieuw." }) });
+    });
     req.setTimeout(25000, () => { req.destroy(); resolve({ statusCode: 504, headers, body: JSON.stringify({ error: "Timeout." }) }); });
     req.write(postData);
     req.end();

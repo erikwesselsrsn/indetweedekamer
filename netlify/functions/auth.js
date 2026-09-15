@@ -102,7 +102,13 @@ exports.handler = async function (event) {
     });
 
     req.on("error", (e) => {
-      resolve({ statusCode: 502, headers, body: JSON.stringify({ error: e.message }) });
+      // Log de technische details server-side (Netlify function-logs, alleen
+      // voor de beheerder zichtbaar); stuur naar de client een generieke
+      // fout zonder interne infrastructuurdetails (hostnamen, DNS-fouten
+      // e.d.) -- de frontend filtert dit inmiddels ook al, maar dit voorkomt
+      // dat het gevoelige detail de proxy-response überhaupt nog verlaat.
+      console.error("Auth-proxy netwerkfout:", e.message);
+      resolve({ statusCode: 502, headers, body: JSON.stringify({ error: "Kan geen verbinding maken met de inlogserver. Probeer het later opnieuw." }) });
     });
 
     req.setTimeout(8000, () => {
