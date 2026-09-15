@@ -742,6 +742,10 @@ function initState(party, name, theme, apiKey) {
     peiling: null,
     peilingHistorie: [],
     agendaDone: { debat: false, overleg: false, media: false, werkbezoek: false, werkbezoekKeuze: '' },
+    // Bijhouden welke agenda-items zijn "gemist" (0 energie) i.p.v. echt
+    // gedaan -- puur voor UI-weergave, telt niet mee voor voortgang
+    // (agendaDone wordt in beide gevallen true, zie gemisteActiviteit()).
+    agendaGemist: { debat: false, overleg: false, media: false, werkbezoek: false },
 
     removedMembers: initRemovedMembers(party),
     newsItems: ['Nieuwe Kamer geïnstalleerd', 'Coalitieakkoord gepresenteerd', 'Debat AOW-leeftijd komende week'],
@@ -820,6 +824,18 @@ function renderStats() {
   document.getElementById('energie-fill').style.width = epct + '%';
   document.getElementById('energie-fill').style.background = e <= eMax * 0.3 ? 'var(--red)' : 'var(--green)';
   document.getElementById('energie-val').textContent = e + '/' + eMax;
+
+  // Vervolg op 0 energie (toegevoegd n.a.v. speeltest-feedback): een
+  // vrije agenda-activiteit (debat/overleg/media/werkbezoek) die je op
+  // 0 energie probeert te doen, laat je noodgedwongen schieten -- zie
+  // gemisteActiviteit(). De tooltip op de energiebalk maakt dat vooraf
+  // duidelijk i.p.v. dat de speler er per ongeluk achter komt.
+  const energieBarEl = document.querySelector('.topbar-energie');
+  if (energieBarEl) {
+    energieBarEl.title = e <= 0
+      ? 'Je energie is op: de volgende agenda-activiteit die je opent, laat je noodgedwongen schieten (met een klein stat-verlies). Herstel komt bij de volgende week.'
+      : 'Elke agenda-activiteit (debat, overleg, media, werkbezoek, dilemma) kost energie. Op 0 energie moet je een activiteit laten schieten.';
+  }
 }
 
 function renderTopbar() {
@@ -1019,18 +1035,24 @@ function retryMoties() {
 function handleAgendaKlik(type) {
   if (!type) return;
   const done = state.agendaDone || {};
+  // Vervolg op 0 energie: de vier "vrije" agenda-activiteiten kosten elk
+  // 1 energie (zie doActivity/kiesWerkbezoek). Op 0 energie kan de speler
+  // ze niet meer normaal uitvoeren -- het item wordt dan automatisch
+  // "gemist" i.p.v. de keuzemodal te openen. Dilemma staat hier bewust
+  // buiten: dat is de verplichte kern van de week, niet overslaanbaar.
+  const energieOp = state.stats.energie <= 0;
   switch(type) {
     case 'DEBAT':
-      if (!done.debat) openActivity('debat');
+      if (!done.debat) energieOp ? gemisteActiviteit('debat') : openActivity('debat');
       break;
     case 'OVERLEG':
-      if (!state.agendaDone.overleg) openActivity('overleg');
+      if (!state.agendaDone.overleg) energieOp ? gemisteActiviteit('overleg') : openActivity('overleg');
       break;
     case 'MEDIA':
-      if (!done.media) openActivity('media');
+      if (!done.media) energieOp ? gemisteActiviteit('media') : openActivity('media');
       break;
     case 'WERKBEZOEK':
-      if (!done.werkbezoek) openWerkbezoek();
+      if (!done.werkbezoek) energieOp ? gemisteActiviteit('werkbezoek') : openWerkbezoek();
       break;
     case 'DILEMMA':
       if (!state.dilemmaAnswered) switchTab('dilemma');
@@ -1038,11 +1060,88 @@ function handleAgendaKlik(type) {
   }
 }
 
+// Wordt aangeroepen i.p.v. openActivity()/openWerkbezoek() wanneer de
+// speler op 0 energie een agenda-activiteit probeert te starten. Geen
+// keuzemodal -- de activiteit gaat zonder het Kamerlid door (of wordt
+// afgezegd), met een bescheiden stat-verlies (kleiner dan een bewust
+// gemaakte keuze zou kosten) en een nieuwsitem. agendaDone wordt WEL op
+// true gezet, zodat de speler niet vast komt te zitten: "Volgende week"
+// blijft altijd bereikbaar, ook op 0 energie voor de rest van de week.
+const GEMIST_INFO = {
+  debat: { label: 'Plenair debat', stat: 'dossier', waarde: -2,
+    tekst: 'Je bent te uitgeput om zelf het woord te voeren — een fractiegenoot neemt je punt over, maar zonder jouw inbreng.',
+    nieuws: 'Kamerlid mist eigen inbreng in debat door uitputting' },
+  overleg: { label: 'Commissievergadering', stat: 'dossier', waarde: -2,
+    tekst: 'Je haalt de commissievergadering niet — je dossierwerk voor deze week blijft onaf.',
+    nieuws: 'Kamerlid mist commissievergadering door uitputting' },
+  media: { label: 'Persmoment', stat: 'media', waarde: -2,
+    tekst: 'Je slaat het persmoment over — geen energie meer voor de camera\'s deze week.',
+    nieuws: 'Kamerlid laat persmoment schieten wegens uitputting' },
+  werkbezoek: { label: 'Werkbezoek', stat: 'populariteit', waarde: -2,
+    tekst: 'Je werkbezoek gaat niet door — je bent simpelweg op.',
+    nieuws: 'Kamerlid annuleert werkbezoek wegens uitputting' },
+};
+
+function gemisteActiviteit(type) {
+  const info = GEMIST_INFO[type];
+  if (!info) return;
+
+  state.agendaDone[type] = true;
+  state.agendaGemist[type] = true;
+  if (type === 'werkbezoek') state.agendaDone.werkbezoekKeuze = 'Gemist — geen energie meer';
+  updateNextWeekButton();
+
+  const voor = state.stats[info.stat];
+  state.stats[info.stat] = Math.max(0, voor + info.waarde);
+  const werkelijkeWaarde = state.stats[info.stat] - voor;
+
+  state.newsItems.unshift(info.nieuws);
+  if (state.newsItems.length > 8) state.newsItems.pop();
+
+  // Kleine modal met uitleg, consistent met de andere activiteit-modals,
+  // maar zonder keuzes -- de uitkomst staat al vast.
+  const existing = document.getElementById('activity-modal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'activity-modal';
+  modal.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">⚡ ${escapeHtml(info.label.toUpperCase())} GEMIST</span>
+        <button class="modal-close" onclick="closeModal()">✕ SLUITEN</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-result">
+          <div class="mr-headline">😩 Geen energie meer</div>
+          <div class="mr-text">${escapeHtml(info.tekst)}</div>
+          <div class="stat-changes">
+            <span class="stat-change neg">${STAT_LABELS[info.stat]}: ${werkelijkeWaarde}</span>
+          </div>
+        </div>
+        <div class="uitleg-box">
+          <div class="uitleg-title">💡 Waarom gebeurt dit?</div>
+          <div class="uitleg-text">Energie staat voor je fysieke en mentale capaciteit als Kamerlid. Op 0 energie kun je
+          een activiteit niet meer met volle inzet doen -- die gaat dan zonder jou door, of wordt afgezegd. Volgende
+          week is je energie weer aangevuld.</div>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  renderStats();
+  renderAgenda();
+  renderTopbar();
+}
+
 function renderAgenda() {
   const debatDone = state.agendaDone && state.agendaDone.debat;
   const mediaDone = state.agendaDone && state.agendaDone.media;
   const werkbezoekDone = state.agendaDone && state.agendaDone.werkbezoek;
   const overlegDone = !!(state.agendaDone && state.agendaDone.overleg);
+  // Fallback voor oude saves van vóór het "gemiste activiteit"-vervolg
+  // op 0 energie, die dit veld nog niet hebben.
+  if (!state.agendaGemist) state.agendaGemist = { debat: false, overleg: false, media: false, werkbezoek: false };
   // Piekweek (game-designer#2): het plenaire debat krijgt een afwijkende
   // titel/planning (begrotingsbehandeling of spoeddebat) en boven de
   // agenda verschijnt een piekweek-banner.
@@ -1050,17 +1149,17 @@ function renderAgenda() {
   const debatTitel = pw ? pw.agendaDebatTitel + state.theme : 'Plenair debat: ' + state.theme;
   const debatMeta = pw ? pw.agendaDebatMeta : 'Dinsdag · Plenaire zaal';
   const items = [
-    { dot: debatDone ? 'done' : 'urgent', type: 'DEBAT', done: debatDone,
-      title: debatDone ? debatTitel + ' ✓' : debatTitel,
+    { dot: debatDone ? (state.agendaGemist.debat ? 'gemist' : 'done') : 'urgent', type: 'DEBAT', done: debatDone,
+      title: debatDone ? debatTitel + (state.agendaGemist.debat ? ' ⚡ gemist' : ' ✓') : debatTitel,
       meta: debatMeta },
-    { dot: state.agendaDone.overleg ? 'done' : 'normal', type: 'OVERLEG', done: !!state.agendaDone.overleg,
-      title: state.agendaDone.overleg ? 'Commissievergadering ✓' : 'Commissievergadering ' + state.theme,
+    { dot: state.agendaDone.overleg ? (state.agendaGemist.overleg ? 'gemist' : 'done') : 'normal', type: 'OVERLEG', done: !!state.agendaDone.overleg,
+      title: state.agendaDone.overleg ? 'Commissievergadering' + (state.agendaGemist.overleg ? ' ⚡ gemist' : ' ✓') : 'Commissievergadering ' + state.theme,
       meta: 'Woensdag · Commissiezaal' },
-    { dot: mediaDone ? 'done' : 'normal', type: 'MEDIA', done: mediaDone,
-      title: mediaDone ? 'Persmoment ✓' : 'Persmoment na debat',
+    { dot: mediaDone ? (state.agendaGemist.media ? 'gemist' : 'done') : 'normal', type: 'MEDIA', done: mediaDone,
+      title: mediaDone ? 'Persmoment' + (state.agendaGemist.media ? ' ⚡ gemist' : ' ✓') : 'Persmoment na debat',
       meta: 'Dinsdag 17:00 · Perszaal' },
-    { dot: werkbezoekDone ? 'done' : 'normal', type: 'WERKBEZOEK', done: werkbezoekDone,
-      title: werkbezoekDone ? 'Werkbezoek ingepland ✓' : 'Maandag/vrijdag: werkbezoek plannen',
+    { dot: werkbezoekDone ? (state.agendaGemist.werkbezoek ? 'gemist' : 'done') : 'normal', type: 'WERKBEZOEK', done: werkbezoekDone,
+      title: werkbezoekDone ? 'Werkbezoek' + (state.agendaGemist.werkbezoek ? ' ⚡ gemist' : ' ingepland ✓') : 'Maandag/vrijdag: werkbezoek plannen',
       meta: werkbezoekDone ? state.agendaDone.werkbezoekKeuze || '' : 'Kies je activiteit voor maandag of vrijdag' },
     { dot: state.dilemmaAnswered ? 'done' : 'urgent', type: 'DILEMMA', done: state.dilemmaAnswered,
       title: state.dilemmaAnswered ? 'Dilemma behandeld ✓' : '⚠ Dilemma vereist beslissing',
@@ -1579,11 +1678,23 @@ function berekenPeiling() {
   const overigTotaal = totaal - peiling[state.party];
   const overigDoel = 150 - peiling[state.party];
   const factor = overigDoel > 0 && overigTotaal > 0 ? overigDoel / overigTotaal : 1;
-  PARTIES.forEach(p => {
-    if (p.id !== state.party) {
-      peiling[p.id] = Math.max(1, Math.round(peiling[p.id] * factor));
-    }
+  const overigePartijen = PARTIES.filter(p => p.id !== state.party);
+  overigePartijen.forEach(p => {
+    peiling[p.id] = Math.max(1, Math.round(peiling[p.id] * factor));
   });
+
+  // Afrondingscorrectie: onafhankelijk afronden per partij kan het totaal
+  // 1-2 zetels laten afwijken van 150. Los dat op door het restant bij de
+  // grootste overige partij te leggen -- zo blijft het totaal exact 150
+  // (zoals de echte zetelverdeling van de Tweede Kamer) zonder dat een
+  // kleine partij ineens onder de 1 zetel zou kunnen zakken.
+  let overigNu = 0;
+  overigePartijen.forEach(p => { overigNu += peiling[p.id]; });
+  const drift = overigDoel - overigNu;
+  if (drift !== 0 && overigePartijen.length > 0) {
+    const grootste = overigePartijen.reduce((a, b) => peiling[a.id] >= peiling[b.id] ? a : b);
+    peiling[grootste.id] = Math.max(1, peiling[grootste.id] + drift);
+  }
 
   return peiling;
 }
@@ -2094,6 +2205,7 @@ async function applyWeekContent(parsed) {
   state.pendingDilemma = parsed;
   state.dilemmaAnswered = false;
   state.agendaDone = { debat: false, overleg: false, media: false, werkbezoek: false, werkbezoekKeuze: '' };
+  state.agendaGemist = { debat: false, overleg: false, media: false, werkbezoek: false };
   if (Array.isArray(parsed.moties)) {
     parsed.moties.forEach(m => {
       state.moties.push({
@@ -2485,6 +2597,7 @@ async function generateWeeklyContent() {
     state.pendingDilemma = dilemma;
     state.dilemmaAnswered = false;
     state.agendaDone = { debat: false, overleg: false, media: false, werkbezoek: false, werkbezoekKeuze: '' };
+  state.agendaGemist = { debat: false, overleg: false, media: false, werkbezoek: false };
     state.newsItems.unshift(dilemma.nieuws_item || '');
     if (state.newsItems.length > 8) state.newsItems.pop();
     updateTicker();
@@ -2502,6 +2615,7 @@ async function generateWeeklyContent() {
   } catch(e) {
     // Reset agenda ook bij fout zodat items klikbaar blijven
     state.agendaDone = { debat: false, overleg: false, media: false, werkbezoek: false, werkbezoekKeuze: '' };
+  state.agendaGemist = { debat: false, overleg: false, media: false, werkbezoek: false };
     renderAgenda();
     document.getElementById('week-error').textContent = 'Fout bij laden: ' + e.message + ' — klik Volgende Week om opnieuw te proberen.';
   }

@@ -652,6 +652,10 @@
   .agenda-dot.urgent { background: var(--red); }
   .agenda-dot.normal { background: var(--yellow); }
   .agenda-dot.done { background: var(--dim); }
+  /* Vervolg op 0 energie: een gemiste activiteit blijft zichtbaar als
+     "afgehandeld" (voortgang blokkeert niet), maar in een eigen kleur
+     zodat het duidelijk anders is dan een bewust gedane activiteit. */
+  .agenda-dot.gemist { background: var(--yellow-dim); border: 1px solid var(--yellow); }
 
   .agenda-info { flex: 1; }
   .agenda-title { font-size: 12px; color: var(--white); }
