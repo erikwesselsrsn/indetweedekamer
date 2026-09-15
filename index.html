@@ -3697,9 +3697,16 @@ async function doLogin() {
     }
 
     if (!res.ok) {
-      // Vertaal Supabase foutmeldingen naar begrijpelijk Nederlands
+      // Vertaal Supabase foutmeldingen naar begrijpelijk Nederlands.
+      // BELANGRIJK: de ruwe tekst (`raw`) wordt NOOIT rechtstreeks getoond
+      // aan de speler -- die kan interne infrastructuurdetails bevatten
+      // (bijv. een Netlify-functiefout met daarin de Supabase-hostnaam,
+      // zoals "getaddrinfo ENOTFOUND ...supabase.co" als het project
+      // gepauzeerd is). Onherkende fouten krijgen daarom altijd een
+      // nette, generieke tekst; de ruwe tekst gaat alleen naar de
+      // browserconsole, voor wie wil debuggen.
       const raw = data.error_description || data.error || data.message || '';
-      let msg = 'Inloggen mislukt.';
+      let msg = 'Inloggen mislukt. Probeer het later opnieuw of neem contact op met je docent.';
       if (raw.toLowerCase().includes('invalid login') || raw.toLowerCase().includes('invalid_grant')) {
         msg = 'E-mailadres of wachtwoord klopt niet.';
       } else if (raw.toLowerCase().includes('email not confirmed')) {
@@ -3709,7 +3716,7 @@ async function doLogin() {
       } else if (raw.toLowerCase().includes('too many requests')) {
         msg = 'Te veel pogingen. Wacht even en probeer opnieuw.';
       } else if (raw) {
-        msg = raw;
+        console.warn('Inloggen mislukt (technische details, niet zichtbaar voor de speler):', raw);
       }
       throw new Error(msg);
     }
@@ -3802,14 +3809,15 @@ async function doSetPassword() {
     }
 
     if (!res.ok) {
+      // Zelfde principe als bij doLogin(): geen ruwe backend-tekst tonen.
       const raw = data.error_description || data.error || data.message || data.msg || '';
-      let msg = 'Wachtwoord instellen mislukt.';
+      let msg = 'Wachtwoord instellen mislukt. Probeer het later opnieuw of neem contact op met je docent.';
       if (raw.toLowerCase().includes('password') && raw.toLowerCase().includes('short')) {
         msg = 'Wachtwoord is te kort — kies minimaal 6 tekens.';
       } else if (raw.toLowerCase().includes('same password') || raw.toLowerCase().includes('should be different')) {
         msg = 'Kies een ander wachtwoord dan je huidige (indien van toepassing).';
       } else if (raw) {
-        msg = raw;
+        console.warn('Wachtwoord instellen mislukt (technische details, niet zichtbaar voor de speler):', raw);
       }
       throw new Error(msg);
     }
